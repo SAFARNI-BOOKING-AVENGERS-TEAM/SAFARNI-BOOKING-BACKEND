@@ -4,7 +4,23 @@ export const createTour = async (data: Partial<ITour>): Promise<ITour> => {
   return await Tour.create(data);
 };
 
-export const getTours = async (query: any = {}): Promise<ITour[]> => {
+export const getTours = async (queryParam: any = {}): Promise<ITour[]> => {
+  const { title, city, difficulty, recommended, ...otherFilters } = queryParam;
+  const query: any = { ...otherFilters };
+
+  if (title) {
+    query.title = { $regex: title, $options: "i" };
+  }
+  if (city) {
+    query["locations.city"] = { $regex: city, $options: "i" };
+  }
+  if (difficulty) {
+    query.difficulty = difficulty;
+  }
+  if (recommended !== undefined) {
+    query.recommended = recommended === "true";
+  }
+
   return await Tour.find(query);
 };
 

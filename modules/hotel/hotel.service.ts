@@ -2,10 +2,23 @@ import HotelModel from "../../DB/models/hotel.model";
 import RoomModel from "../../DB/models/room.model";
 
 export class HotelService {
-    // get All hotels 
-  static async getHotels() {
-    return await HotelModel.find();
-  }
+    // get All hotels with filters
+    static async getHotels(queryParam: any = {}) {
+      const { city, name, rating } = queryParam;
+      const query: any = {};
+  
+      if (city) {
+        query["location.city"] = { $regex: city, $options: "i" };
+      }
+      if (name) {
+        query.name = { $regex: name, $options: "i" };
+      }
+      if (rating) {
+        query.rating = { $gte: Number(rating) };
+      }
+  
+      return await HotelModel.find(query);
+    }
   // get hotel by id 
     static async getHotelDetails(hotelId: string) {
       const hotel = await HotelModel.findById(hotelId);
@@ -93,5 +106,24 @@ export class HotelService {
       await hotel.save();
   
       return hotel.gallery;
+    }
+
+    static async updateRoom(roomId: string, payload: any) {
+      const room = await RoomModel.findById(roomId);
+      if (!room) {
+        throw new Error("Room not found");
+      }
+
+      Object.assign(room, payload);
+      await room.save();
+      return room;
+    }
+
+    static async deleteRoom(roomId: string) {
+      const room = await RoomModel.findByIdAndDelete(roomId);
+      if (!room) {
+        throw new Error("Room not found");
+      }
+      return room;
     }
 }
