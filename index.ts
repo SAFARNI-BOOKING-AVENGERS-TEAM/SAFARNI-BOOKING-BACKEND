@@ -14,6 +14,8 @@ import 'dotenv/config';
 
 import tourRouter from "./modules/tour/tour.controller";
 import hotelRouter from "./modules/hotel/hotel.controller";
+import bookingRouter from "./modules/booking/booking.controller";
+import carRouter from "./modules/car/car.controller";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -27,12 +29,10 @@ app.use("/auth", authRouter);
 app.use("/tours", tourRouter);
 app.use("/hotels", hotelRouter);
 app.use("/api/hotels", hotelRouter);
+app.use("/bookings", bookingRouter);
+app.use("/cars", carRouter);
 
 app.use("/users", usersRouter);
-
-app.use(notFound);
-
-app.use(globalErrorHandler);
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -81,6 +81,10 @@ app.get("/", (req, res) => {
   });
 });
 
+app.use(notFound);
+
+app.use(globalErrorHandler);
+
 const startServer = async () => {
   await connectDB();
   app.listen(port, () => {
@@ -89,3 +93,4 @@ const startServer = async () => {
 };
 
 startServer();
+// Reload nodemon for search filter fix

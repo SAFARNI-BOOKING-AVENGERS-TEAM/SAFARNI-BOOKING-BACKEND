@@ -43,3 +43,9 @@ export const LoginSchema = z.object({
     password: UserSchema.shape.password,
   }),
 });
+
+export const verifyEmailSchema = z.object({
+  body: z.strictObject({
+    email: UserSchema.shape.email,
+  }),
+});

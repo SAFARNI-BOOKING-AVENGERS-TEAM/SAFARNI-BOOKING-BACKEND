@@ -7,6 +7,10 @@ export interface IUser extends Document {
   isVerified: boolean;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  profilePicture?: {
+    url: string;
+    publicId: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +41,10 @@ const userSchema = new Schema<IUser>(
     },
     passwordResetToken: String,
     passwordResetExpires: Date,
+    profilePicture: {
+      url: String,
+      publicId: String,
+    },
   },
   {
     timestamps: true,

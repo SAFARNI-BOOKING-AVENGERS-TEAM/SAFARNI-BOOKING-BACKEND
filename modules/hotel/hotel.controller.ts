@@ -8,7 +8,7 @@ const router = Router();
 router.get(
   "/",
   asyncHandler(async (req: Request, res: Response) => {
-    const hotels = await HotelService.getHotels();
+    const hotels = await HotelService.getHotels(req.query);
 
     res.status(200).json({
       success: true,
@@ -63,12 +63,39 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const gallery = await HotelService.addHotelImages(
       req.params.hotelId,
-      req.files as any[]
+      (req as any).files as any[]
     );
 
     res.status(200).json({
       success: true,
       data: gallery,
+    });
+  })
+);
+
+router.patch(
+  "/admin/rooms/:roomId",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { roomId } = req.params;
+    const room = await HotelService.updateRoom(roomId, req.body);
+
+    res.status(200).json({
+      success: true,
+      data: room,
+    });
+  })
+);
+
+router.delete(
+  "/admin/rooms/:roomId",
+  asyncHandler(async (req: Request, res: Response) => {
+    const { roomId } = req.params;
+    const room = await HotelService.deleteRoom(roomId);
+
+    res.status(200).json({
+      success: true,
+      message: "Room deleted successfully",
+      data: room,
     });
   })
 );

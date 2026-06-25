@@ -38,10 +38,25 @@ export const resetPasswordRequest = async (
 
   const template: EmailTemplate = getResetPasswordTemplate(resetUrl);
 
-  await sendEmail({
-    email: user.email,
-    ...template,
-  });
+  try {
+    await sendEmail({
+      email: user.email,
+      ...template,
+    });
+  } catch (error) {
+    console.log("\n==================================================");
+    console.log("SMTP email sending skipped or failed.");
+    console.log(`Reset URL: ${resetUrl}`);
+    console.log("==================================================\n");
+    
+    if (!process.env.EMAIL_HOST) {
+      return successResponse({ 
+        res, 
+        message: `Reset link generated (printed to server console): ${resetUrl}` 
+      });
+    }
+    throw error;
+  }
   return successResponse({ res, message: "Reset link sent to your email!" });
 };
 
@@ -136,5 +151,23 @@ export const login = async (req: Request, res: Response) => {
   return successResponse({
     res,
     info: "Credentials Saved In User Cookies",
+  });
+};
+
+export const verifyEmail = async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  const user = await UserModel.findOne({ email });
+
+  if (!user) {
+    throw new NotFoundException("User Not Exist");
+  }
+
+  user.isVerified = true;
+  await user.save();
+
+  return successResponse({
+    res,
+    message: "Email verified successfully! You can now log in",
   });
 };
