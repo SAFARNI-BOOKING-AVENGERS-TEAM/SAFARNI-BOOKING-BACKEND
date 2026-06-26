@@ -1,4 +1,4 @@
-import { setTokenCookie } from "./../../utils/cookies/cookies";
+import { setTokenCookie, clearTokenCookie } from "./../../utils/cookies/cookies";
 import { generateTokens } from "./../../utils/security/token.security";
 import { Request, Response } from "express";
 import { ForgetPasswordRequest, LoginRequest } from "./types/request.types";
@@ -151,6 +151,14 @@ export const login = async (req: Request, res: Response) => {
   return successResponse({
     res,
     info: "Credentials Saved In User Cookies",
+  });
+};
+
+export const logout = async (req: Request, res: Response) => {
+  clearTokenCookie(res);
+  return successResponse({
+    res,
+    message: "Logged out successfully",
   });
 };
 
