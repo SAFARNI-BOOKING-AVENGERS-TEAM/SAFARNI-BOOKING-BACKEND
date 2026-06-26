@@ -4,6 +4,8 @@ import {
   resetPasswordConfirm,
   login,
   verifyEmail,
+  registerUser,
+  logout,
 } from "./authentication.service";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
 import {
@@ -12,7 +14,6 @@ import {
   LoginSchema,
   verifyEmailSchema,
 } from "./types/zod.types";
-import { registerUser } from "./authentication.service";
 
 const authRouter = Router();
 
@@ -31,6 +32,8 @@ authRouter.post(
 authRouter.post("/signup", registerUser);
 
 authRouter.post("/login", validateRequest(LoginSchema), login);
+
+authRouter.post("/logout", logout);
 
 authRouter.post(
   "/verify-email",
