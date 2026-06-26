@@ -88,6 +88,8 @@ app.use(notFound);
 
 app.use(globalErrorHandler);
 
+export default app;
+
 const startServer = async () => {
   await connectDB();
   app.listen(port, () => {
@@ -95,5 +97,7 @@ const startServer = async () => {
   });
 };
 
-startServer();
+if (process.env.VERCEL !== "1") {
+  startServer();
+}
 // Reload nodemon for search filter fix
