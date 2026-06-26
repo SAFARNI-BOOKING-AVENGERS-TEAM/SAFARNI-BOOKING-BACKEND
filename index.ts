@@ -16,6 +16,7 @@ import tourRouter from "./modules/tour/tour.controller";
 import hotelRouter from "./modules/hotel/hotel.controller";
 import bookingRouter from "./modules/booking/booking.controller";
 import carRouter from "./modules/car/car.controller";
+import flightRouter from "./modules/flight/flight.controller";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -31,6 +32,8 @@ app.use("/hotels", hotelRouter);
 app.use("/api/hotels", hotelRouter);
 app.use("/bookings", bookingRouter);
 app.use("/cars", carRouter);
+app.use("/flights", flightRouter);
+app.use("/api/flights", flightRouter);
 
 app.use("/users", usersRouter);
 

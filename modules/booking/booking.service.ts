@@ -3,6 +3,7 @@ import BookingModel from "../../DB/models/booking.model";
 import RoomModel from "../../DB/models/room.model";
 import TourModel from "../../DB/models/tour.model";
 import CarModel from "../../DB/models/car.model";
+import FlightModel from "../../DB/models/flight.model";
 import {
   BadRequestException,
   NotFoundException,
@@ -55,8 +56,17 @@ export const createBooking = async (req: Request, res: Response) => {
 
     totalPrice = unitPrice * quantity;
   } else if (category === "flights") {
-    const flightPrice = Number(details?.price || 300);
-    totalPrice = flightPrice * quantity;
+    // itemId is Flight ID
+    const flight = await FlightModel.findById(itemId);
+    if (!flight) {
+      throw new NotFoundException("Flight not found");
+    }
+    if (flight.availableSeats < quantity) {
+      throw new BadRequestException("Not enough seats available");
+    }
+    totalPrice = flight.price * quantity;
+    flight.availableSeats -= quantity;
+    await flight.save();
   } else if (category === "cars") {
     // itemId is Car ID
     const car = await CarModel.findById(itemId);
@@ -155,6 +165,15 @@ export const cancelBooking = async (req: Request, res: Response) => {
 
   if (booking.status === "cancelled") {
     throw new BadRequestException("Booking is already cancelled");
+  }
+
+  if (booking.category === "flights") {
+    const flight = await FlightModel.findById(booking.itemId);
+    if (flight) {
+      const quantity = Number(booking.details?.guests || booking.details?.quantity || 1);
+      flight.availableSeats += quantity;
+      await flight.save();
+    }
   }
 
   booking.status = "cancelled";
