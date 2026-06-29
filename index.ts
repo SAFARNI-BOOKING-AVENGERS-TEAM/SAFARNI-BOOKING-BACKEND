@@ -26,6 +26,14 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 
+app.use((req, res, next) => {
+  console.log(`[${req.method}] ${req.url} - body:`, req.body);
+  res.on('finish', () => {
+    console.log(`[${req.method}] ${req.url} - status: ${res.statusCode}`);
+  });
+  next();
+});
+
 app.use("/auth", authRouter);
 app.use("/tours", tourRouter);
 app.use("/hotels", hotelRouter);
