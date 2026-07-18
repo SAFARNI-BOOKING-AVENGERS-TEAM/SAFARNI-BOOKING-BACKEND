@@ -11,7 +11,7 @@ export interface IBooking extends Document {
   details?: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
-}
+}   
 
 const bookingSchema = new Schema<IBooking>(
   {
