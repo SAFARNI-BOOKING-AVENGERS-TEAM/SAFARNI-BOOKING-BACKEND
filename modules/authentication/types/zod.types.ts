@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { superRefine, z } from "zod";
 
 export const UserSchema = z.object({
   name: z.string().min(2, "Name too short"),
@@ -10,8 +10,19 @@ export const UserSchema = z.object({
   password: z
     .string({ message: "Password is required" })
     .min(8, "Password must be at least 8 characters"),
+  role: z.enum(["user", "service_provider", "admin"]
+  ),
+  service: z.enum(["flights", "cars", "hotels"]).optional(),
+  
 
-  isVerified: z.boolean().default(false),
+  isVerified: z.boolean().default(false)
+}).superRefine((data, ctx) => {
+  if (data.role === "service_provider" && !data.service) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Service is required for service providers",
+    });
+  }
 });
 
 export const resetPasswordRequestSchema = z.object({
@@ -47,5 +58,43 @@ export const LoginSchema = z.object({
 export const verifyEmailSchema = z.object({
   body: z.strictObject({
     email: UserSchema.shape.email,
+  }),
+});
+// Additional schemas for service provider management
+// Add Service Provider Schema
+export const addServiceProviderSchema = z.object({
+  body: z.strictObject({
+    name: UserSchema.shape.name,
+    email: UserSchema.shape.email,
+    password: UserSchema.shape.password,
+    service: UserSchema.shape.service,
+  }),
+});
+// Update Service Provider Schema
+export const updateServiceProviderSchema = z.object({
+  params: z.object({
+    id: z.string()
+  }),
+  body: z.strictObject({
+    name: UserSchema.shape.name,
+    email: UserSchema.shape.email,
+    service: UserSchema.shape.service,
+  }),
+});
+// Patch Update Service Provider Schema
+export const patchUpdateServiceProviderSchema = z.object({
+  params: z.object({
+    id: z.string()
+  }),
+  body: z.strictObject({
+    name: UserSchema.shape.name.optional(),
+    email: UserSchema.shape.email.optional(),
+    service: UserSchema.shape.service.optional(),
+  }),
+});
+//get service provider by service schema
+export const getServiceProviderByServiceSchema = z.object({
+  query: z.object({
+    service: UserSchema.shape.service,
   }),
 });

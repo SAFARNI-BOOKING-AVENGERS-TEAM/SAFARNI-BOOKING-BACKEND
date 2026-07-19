@@ -6,7 +6,7 @@ export interface ICar {
   year?: number;
   type: "SUV" | "Sedan" | "Hatchback" | "Convertible" | "Luxury";
   transmission: "Automatic" | "Manual";
-  fuelType: "Petrol" | "Diesel" | "Electric" | "Hybrid";
+ 
   seats: number;
   pricePerDay: number;
   available: boolean;
@@ -36,11 +36,7 @@ const CarSchema = new Schema<ICar>(
       enum: ["Automatic", "Manual"],
       required: [true, "Transmission type is required"],
     },
-    fuelType: {
-      type: String,
-      enum: ["Petrol", "Diesel", "Electric", "Hybrid"],
-      required: [true, "Fuel type is required"],
-    },
+    
     seats: { type: Number, required: [true, "Seats count is required"] },
     pricePerDay: { type: Number, required: [true, "Price per day is required"] },
     available: { type: Boolean, default: true },

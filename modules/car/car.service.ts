@@ -19,7 +19,7 @@ export const createCar = async (req: Request, res: Response) => {
     year,
     type,
     transmission,
-    fuelType,
+   
     seats,
     pricePerDay,
     available,
@@ -33,7 +33,7 @@ export const createCar = async (req: Request, res: Response) => {
     year,
     type,
     transmission,
-    fuelType,
+   
     seats,
     pricePerDay,
     available,
