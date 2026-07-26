@@ -57,4 +57,8 @@ const bookingSchema = new Schema<IBooking>(
 
 const BookingModel = model<IBooking>("Booking", bookingSchema);
 
+bookingSchema.index({ userId: 1 });
+bookingSchema.index({ status: 1 });
+bookingSchema.index({ category: 1 });
+
 export default BookingModel;

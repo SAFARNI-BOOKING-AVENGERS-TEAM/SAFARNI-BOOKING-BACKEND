@@ -27,7 +27,7 @@ export interface ITour extends Document {
   exclusiveItems?: string[];
   cancellationPolicy?: string;
   languages: string[];
-  difficulty: string;
+  difficulty?: string;
   providerInfo: {
     name: string;
     contact?: string;
@@ -41,6 +41,7 @@ export interface ITour extends Document {
   recommended: boolean;
   createdBy: Types.ObjectId;
   updatedBy: Types.ObjectId;
+  status: "pending" | "approved" | "rejected";
 }
 
 const TourSchema = new Schema<ITour>(
@@ -93,9 +94,36 @@ const TourSchema = new Schema<ITour>(
     recommended: { type: Boolean, default: false },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
   },
   { timestamps: true }
 );
 
-export const Tour = mongoose.model<ITour>("Tour", TourSchema);
+TourSchema.index({
+  "locations.city": 1,
+});
+
+TourSchema.index({
+  recommended: 1,
+});
+
+TourSchema.index({
+  status: 1,
+});
+
+TourSchema.index({
+  title: "text",
+  summary: "text",
+  tags: "text",
+});
+
+const Tour = mongoose.model<ITour>(
+  "Tour",
+  TourSchema
+);
+
 export default Tour;

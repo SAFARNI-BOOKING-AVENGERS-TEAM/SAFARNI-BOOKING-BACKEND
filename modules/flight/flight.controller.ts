@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { adminMiddleware } from "../../middleware/admin.middleware";
+import { authorizeRoles } from "../../middleware/admin.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
 import {
@@ -12,6 +14,7 @@ import {
   getFlightById,
   updateFlight,
   deleteFlight,
+  updateFlightStatus,
 } from "./flight.service";
 
 const flightRouter = Router();
@@ -26,6 +29,7 @@ flightRouter.get("/:id", asyncHandler(getFlightById));
 flightRouter.post(
   "/createFlight",
   authMiddleware,
+  authorizeRoles("admin", "provider"),
   validateRequest(CreateFlightSchema),
   asyncHandler(createFlight)
 );
@@ -34,6 +38,7 @@ flightRouter.post(
 flightRouter.patch(
   "/updateFlight/:id",
   authMiddleware,
+  authorizeRoles("admin", "provider"),
   validateRequest(UpdateFlightSchema),
   asyncHandler(updateFlight)
 );
@@ -42,7 +47,15 @@ flightRouter.patch(
 flightRouter.delete(
   "/deleteFlight/:id",
   authMiddleware,
+  authorizeRoles("admin", "provider"),
   asyncHandler(deleteFlight)
+);
+
+flightRouter.patch(
+  "/updateFlightStatus/:id",
+  authMiddleware,
+  authorizeRoles("admin"),
+  asyncHandler(updateFlightStatus)
 );
 
 export default flightRouter;

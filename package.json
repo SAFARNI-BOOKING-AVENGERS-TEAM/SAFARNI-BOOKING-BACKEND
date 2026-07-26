@@ -20,6 +20,7 @@
     "crypto": "^1.0.1",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.0.2",
@@ -27,6 +28,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.12",
+    "socket.io": "^4.8.3",
     "zod": "^4.2.1"
   },
   "devDependencies": {

@@ -14,12 +14,13 @@ export interface IFlight {
   updatedBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  status: "pending" | "approved" | "rejected";
 }
 
 const FlightSchema = new Schema<IFlight>(
   {
     airline: { type: String, required: [true, "Airline is required"], trim: true },
-    flightNumber: { type: String, required: [true, "Flight number is required"], trim: true },
+    flightNumber: { type: String, required: [true, "Flight number is required"], trim: true,unique: true },
     departureAirport: { type: String, required: [true, "Departure airport is required"], uppercase: true, trim: true },
     arrivalAirport: { type: String, required: [true, "Arrival airport is required"], uppercase: true, trim: true },
     departureTime: { type: Date, required: [true, "Departure time is required"] },
@@ -33,9 +34,17 @@ const FlightSchema = new Schema<IFlight>(
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
   },
   { timestamps: true }
 );
 
 const FlightModel = mongoose.model<IFlight>("Flight", FlightSchema);
+
+FlightSchema.index({ departureAirport: 1, arrivalAirport: 1, departureTime: 1 });
+
 export default FlightModel;

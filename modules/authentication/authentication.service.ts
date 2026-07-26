@@ -1,5 +1,5 @@
 import { setTokenCookie, clearTokenCookie } from "./../../utils/cookies/cookies";
-import { generateTokens } from "./../../utils/security/token.security";
+import { generateTokens, verifyToken, TokenType } from "./../../utils/security/token.security";
 import { Request, Response } from "express";
 import { ForgetPasswordRequest, LoginRequest } from "./types/request.types";
 import UserModel from "../../DB/models/user.model";
@@ -9,6 +9,7 @@ import { getResetPasswordTemplate } from "../../utils/response/email/resetPasswo
 import {
   BadRequestException,
   NotFoundException,
+  UnAuthorizedException,
 } from "../../utils/response/error.response";
 import crypto from "crypto";
 import { EmailTemplate } from "../../utils/response/email/email.types";
@@ -95,20 +96,33 @@ export interface IRegisterRequest {
 export const registerUser = async (req: Request, res: Response) => {
   // Register a new user
   const { name, email, password }: IRegisterRequest = req.body;
-  if (!name) throw new BadRequestException("No name provided");
-  if (!email) throw new BadRequestException("Missing email");
-  if (!password) throw new BadRequestException("Missing password");
 
   const userExists = await UserModel.findOne({ email });
   if (userExists) throw new BadRequestException("Email already registered");
 
-  const hashedPassword = await hashString(password);
+const hashedPassword = await hashString(password);
+
+  const verificationToken = createRandomToken();
+  const hashedVerificationToken = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
 
   const createdUser = await UserModel.create({
     name,
     email,
     password: hashedPassword,
+    emailVerificationToken: hashedVerificationToken,
+    emailVerificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
   });
+
+  const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+
+  console.log("\n==================================================");
+  console.log("SMTP email sending skipped (dev mode).");
+  console.log(`Verify Email URL/Token: ${verifyUrl}`);
+  console.log(`Raw Token (for Postman testing): ${verificationToken}`);
+  console.log("==================================================\n");
 
   // Remove password from response for security
   const userResponse = {
@@ -122,7 +136,7 @@ export const registerUser = async (req: Request, res: Response) => {
   return successResponse({
     res,
     statusCode: 201,
-    message: "User registered successfully",
+    message: "User registered successfully. Please check your email to verify your account.",
     data: userResponse,
   });
 };
@@ -144,14 +158,23 @@ export const login = async (req: Request, res: Response) => {
     throw new BadRequestException("Email Or Password Incorrect");
   }
 
-  const credentials = generateTokens(user._id as Types.ObjectId);
+const credentials = generateTokens(user._id, user.refreshTokenVersion);
 
   setTokenCookie(res, credentials);
 
-  return successResponse({
-    res,
-    info: "Credentials Saved In User Cookies",
-  });
+return successResponse({
+  res,
+  message: "Login successful",
+  data: {
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+    },
+  },
+});
 };
 
 export const logout = async (req: Request, res: Response) => {
@@ -163,19 +186,54 @@ export const logout = async (req: Request, res: Response) => {
 };
 
 export const verifyEmail = async (req: Request, res: Response) => {
-  const { email } = req.body;
+  const { token } = req.params;
 
-  const user = await UserModel.findOne({ email });
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await UserModel.findOne({
+    emailVerificationToken: hashedToken,
+    emailVerificationExpires: { $gt: new Date() },
+  });
 
   if (!user) {
-    throw new NotFoundException("User Not Exist");
+    throw new BadRequestException("Verification link is invalid or has expired");
   }
 
   user.isVerified = true;
+  user.emailVerificationToken = undefined;
+  user.emailVerificationExpires = undefined;
   await user.save();
+
+return successResponse({
+  res,
+  message: "Email verified successfully",
+});
+};
+
+export const refreshAccessToken = async (req: Request, res: Response) => {
+  const refreshToken = req.cookies?.refresh_token;
+
+  if (!refreshToken) {
+    throw new UnAuthorizedException("Refresh token not found");
+  }
+
+  const { decoded, user } = await verifyToken(refreshToken, TokenType.refresh);
+
+  if (decoded.v !== user.refreshTokenVersion) {
+    throw new UnAuthorizedException(
+      "Refresh token has been revoked. Please login again."
+    );
+  }
+
+  // Rotate: bump the version so this refresh token can never be used again
+  user.refreshTokenVersion += 1;
+  await user.save();
+
+  const credentials = generateTokens(user._id, user.refreshTokenVersion);
+  setTokenCookie(res, credentials);
 
   return successResponse({
     res,
-    message: "Email verified successfully! You can now log in",
+    message: "Token refreshed successfully",
   });
 };
