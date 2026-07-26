@@ -19,6 +19,7 @@ export interface ICar {
   updatedBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  status: "pending" | "approved" | "rejected";
 }
 
 const CarSchema = new Schema<ICar>(
@@ -51,6 +52,11 @@ const CarSchema = new Schema<ICar>(
     image: { type: String },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
   },
   { timestamps: true }
 );

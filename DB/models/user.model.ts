@@ -5,8 +5,12 @@ export interface IUser extends Document {
   email: string;
   password?: string;
   isVerified: boolean;
+  role: "user" | "provider" | "admin";
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  refreshTokenVersion: number;
   profilePicture?: {
     url: string;
     publicId: string;
@@ -39,8 +43,19 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
     },
+    role: {
+      type: String,
+      enum: ["user", "provider", "admin"],
+      default: "user",
+    },
     passwordResetToken: String,
     passwordResetExpires: Date,
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    refreshTokenVersion: {
+      type: Number,
+      default: 0,
+    },
     profilePicture: {
       url: String,
       publicId: String,

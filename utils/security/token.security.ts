@@ -7,7 +7,7 @@ import {
   UnAuthorizedException,
 } from "../response/error.response";
 
-/* ================== Types ================== */
+// Types 
 
 export enum TokenType {
   access = "access",
@@ -23,10 +23,11 @@ const accessExpiresIn = (
 const refreshExpiresIn = process.env
   .REFRESH_TOKEN_EXPIRES as SignOptions["expiresIn"];
 
-/* ================== Generate Access & Refresh ================== */
+// Generate Access & Refresh  
 
 export const generateTokens = (
-  userId: Types.ObjectId
+  userId: Types.ObjectId,
+  refreshTokenVersion: number = 0
 ): { access_token: string; refresh_token: string } => {
   const accessSecret = process.env.ACCESS_TOKEN_SECRET as Secret;
   const refreshSecret = process.env.REFRESH_TOKEN_SECRET as Secret;
@@ -40,14 +41,18 @@ export const generateTokens = (
     expiresIn: accessExpiresIn,
   });
 
-  const refresh_token = jwt.sign({ _id: userId }, refreshSecret, {
-    expiresIn: refreshExpiresIn,
-  });
+  const refresh_token = jwt.sign(
+    { _id: userId, v: refreshTokenVersion },
+    refreshSecret,
+    {
+      expiresIn: refreshExpiresIn,
+    }
+  );
 
   return { access_token, refresh_token };
 };
 
-/* ================== Verify Token ================== */
+// Verify Token 
 
 export const verifyToken = async (
   token: string,
@@ -62,7 +67,12 @@ export const verifyToken = async (
     throw new UnAuthorizedException("Token secret is missing");
   }
 
-  const decoded = jwt.verify(token, secret) as JwtPayload;
+  let decoded: JwtPayload;
+  try {
+    decoded = jwt.verify(token, secret) as JwtPayload;
+  } catch (err) {
+    throw new UnAuthorizedException("Invalid or expired token");
+  }
 
   if (!decoded?._id || !decoded?.iat) {
     throw new UnAuthorizedException("Invalid token payload");

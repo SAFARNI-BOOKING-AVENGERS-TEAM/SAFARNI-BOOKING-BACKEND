@@ -1,83 +1,273 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response } from "express";
+
 import * as tourService from "./tour.service";
+
 import { successResponse } from "../../utils/response/success.response";
-import { NotFoundException } from "../../utils/response/error.response";
+
+import { validateRequest } from "../../middleware/requestValidation.middleware";
+
+import {
+  CreateTourSchema,
+  UpdateTourSchema,
+} from "./types/zod.types";
+
+import { authMiddleware } from "../../middleware/auth.middleware";
+
+import { authorizeRoles } from "../../middleware/admin.middleware";
+
+import { optionalAuthMiddleware } from "../../middleware/optionalAuth.middleware";
+
+import {
+  BadRequestException,
+} from "../../utils/response/error.response";
+
+import { asyncHandler } from "../../utils/response/async.handler";
 
 const router = Router();
 
-router.post("/createTour", (req: Request, res: Response, next: NextFunction) => {
-  tourService
-    .createTour(req.body)
-    .then((tour) => {
+// PUBLIC - GET ALL TOURS
+// Public:
+// - Guest -> approved tours only
+// - User -> approved tours only
+// - Provider -> approved + own tours
+// - Admin -> all tours
+
+router.get(
+  "/",
+  optionalAuthMiddleware,
+
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+      const user =
+        (req as any).credentials?.user;
+
+      const result =
+        await tourService.getTours(
+          req.query,
+          user?.role,
+          user?._id
+        );
+
+      return successResponse({
+        res,
+        message:
+          "Tours retrieved successfully",
+        data: result.data,
+        pagination:
+          result.pagination,
+      });
+    }
+  )
+);
+
+// PUBLIC - GET TOUR BY ID
+
+router.get(
+  "/:id",
+  optionalAuthMiddleware,
+
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+      const user =
+        (req as any).credentials?.user;
+
+      const tour =
+        await tourService.getTourById(
+          req.params.id,
+          user?.role,
+          user?._id
+        );
+
+      return successResponse({
+        res,
+        message:
+          "Tour retrieved successfully",
+        data: tour,
+      });
+    }
+  )
+);
+
+// CREATE TOUR
+// Provider -> pending
+// Admin -> approved
+
+router.post(
+  "/createTour",
+
+  authMiddleware,
+
+  authorizeRoles(
+    "admin",
+    "provider"
+  ),
+
+  validateRequest(
+    CreateTourSchema
+  ),
+
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+      const user =
+        (req as any).credentials?.user;
+
+      const tour =
+        await tourService.createTour(
+          req.body,
+          user._id,
+          user.role
+        );
+
       return successResponse({
         res,
         statusCode: 201,
-        message: "Tour created successfully",
+        message:
+          "Tour created successfully",
         data: tour,
       });
-    })
-    .catch(next);
-});
+    }
+  )
+);
 
-router.get("/", (req: Request, res: Response, next: NextFunction) => {
-  tourService
-    .getTours(req.query)
-    .then((tours) => {
+// UPDATE TOUR
+// Provider -> own tours only
+// Admin -> any tour
+
+router.patch(
+  "/updateTour/:id",
+
+  authMiddleware,
+
+  authorizeRoles(
+    "admin",
+    "provider"
+  ),
+
+  validateRequest(
+    UpdateTourSchema
+  ),
+
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+      const user =
+        (req as any).credentials?.user;
+
+      const tour =
+        await tourService.updateTour(
+          req.params.id,
+          req.body,
+          user._id,
+          user.role
+        );
+
       return successResponse({
         res,
-        message: "Tours retrieved successfully",
-        data: tours,
+        message:
+          "Tour updated successfully",
+        data: tour,
       });
-    })
-    .catch(next);
-});
+    }
+  )
+);
 
-router.get("/:id", (req: Request, res: Response, next: NextFunction) => {
-  tourService
-    .getTourById(req.params.id)
-    .then((tour) => {
-      if (!tour) {
-        return next(new NotFoundException("Tour not found"));
+// DELETE TOUR
+// Provider -> own tours only
+// Admin -> any tour
+// Cannot delete if active booking exists
+
+router.delete(
+  "/deleteTour/:id",
+
+  authMiddleware,
+
+  authorizeRoles(
+    "admin",
+    "provider"
+  ),
+
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+      const user =
+        (req as any).credentials?.user;
+
+      const tour =
+        await tourService.deleteTour(
+          req.params.id,
+          user._id,
+          user.role
+        );
+
+      return successResponse({
+        res,
+        message:
+          "Tour deleted successfully",
+        data: tour,
+      });
+    }
+  )
+);
+
+// ADMIN APPROVE / REJECT TOUR
+
+router.patch(
+  "/admin/tours/:tourId/status",
+
+  authMiddleware,
+
+  authorizeRoles("admin"),
+
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+      const {
+        status,
+      } = req.body;
+
+      if (
+        status !== "approved" &&
+        status !== "rejected"
+      ) {
+        throw new BadRequestException(
+          "Status must be approved or rejected"
+        );
       }
-      return successResponse({
-        res,
-        message: "Tour retrieved successfully",
-        data: tour,
-      });
-    })
-    .catch(next);
-});
 
-router.patch("/updateTour/:id", (req: Request, res: Response, next: NextFunction) => {
-  tourService
-    .updateTour(req.params.id, req.body)
-    .then((tour) => {
-      if (!tour) {
-        return next(new NotFoundException("Tour not found"));
-      }
-      return successResponse({
-        res,
-        message: "Tour updated successfully",
-        data: tour,
-      });
-    })
-    .catch(next);
-});
+      const adminId =
+        (req as any).credentials
+          ?.user?._id;
 
-router.delete("/deleteTour/:id", (req: Request, res: Response, next: NextFunction) => {
-  tourService
-    .deleteTour(req.params.id)
-    .then((tour) => {
-      if (!tour) {
-        return next(new NotFoundException("Tour not found"));
-      }
+      const tour =
+        await tourService.updateTourStatus(
+          req.params.tourId,
+          status,
+          adminId
+        );
+
       return successResponse({
         res,
-        message: "Tour deleted successfully",
+        message:
+          `Tour ${status} successfully`,
         data: tour,
       });
-    })
-    .catch(next);
-});
+    }
+  )
+);
 
 export default router;

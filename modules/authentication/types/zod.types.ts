@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const UserSchema = z.object({
-  name: z.string().min(2, "Name too short"),
+  name: z.string().trim().min(2, "Name too short").max(50, "Name too long"),
 
   email: z
     .string({ message: "Email is required" })
@@ -9,9 +9,8 @@ export const UserSchema = z.object({
 
   password: z
     .string({ message: "Password is required" })
-    .min(8, "Password must be at least 8 characters"),
-
-  isVerified: z.boolean().default(false),
+    .min(8, "Password must be at least 8 characters")
+    .max(64, "Password is too long"),
 });
 
 export const resetPasswordRequestSchema = z.object({
@@ -37,6 +36,14 @@ export const resetPasswordConfirmSchema = z.object({
     }),
 });
 
+export const RegisterSchema = z.object({
+  body: z.strictObject({
+    name: UserSchema.shape.name,
+    email: UserSchema.shape.email,
+    password: UserSchema.shape.password,
+  }),
+});
+
 export const LoginSchema = z.object({
   body: z.strictObject({
     email: UserSchema.shape.email,
@@ -45,7 +52,7 @@ export const LoginSchema = z.object({
 });
 
 export const verifyEmailSchema = z.object({
-  body: z.strictObject({
-    email: UserSchema.shape.email,
+  params: z.object({
+    token: z.string().min(10, "Invalid or expired token"),
   }),
 });
