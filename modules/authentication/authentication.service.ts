@@ -237,3 +237,94 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     message: "Token refreshed successfully",
   });
 };
+///====>operations for service provider management by admin <========
+// Add a new service provider
+export const addServiceProvider = async (req: Request, res: Response) => {
+  const { name, email, password, service } = req.body;
+
+  if (!name || !email || !password || !service) {
+    throw new BadRequestException("Missing required fields");
+  }
+  await UserModel.findOne({ email });
+  const userExists = await UserModel.findOne({ email });
+  if (userExists) throw new BadRequestException("Email already registered");
+
+  const hashedPassword = await hashString(password);
+  const createdUser = await UserModel.create({
+    name,
+    email,
+    password: hashedPassword,
+    service,
+    role: "service_provider"
+  });
+  return successResponse({
+    res,
+    statusCode: 201,
+    message: "Service provider added successfully",
+    data: createdUser,
+  });
+};
+// Get all service providers
+export const getServiceProviders = async (req: Request, res: Response) => {
+  const { service } = req.query;
+  let serviceProviders;
+  if (service) {
+    serviceProviders = await UserModel.find({ role: "service_provider", service });
+  } else {
+    serviceProviders = await UserModel.find({ role: "service_provider" });
+  }
+  return successResponse({
+    res,
+    message: "Service providers retrieved successfully",
+    data: serviceProviders,
+  });
+};
+// Get a specific service provider by ID
+export const getServiceProviderById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const serviceProvider = await UserModel.findById(id);
+  return successResponse({
+    res,
+    message: "Service provider retrieved successfully",
+    data: serviceProvider,
+  });
+};
+// Update a service provider by ID
+export const updateServiceProvider = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, email, service } = req.body;
+  const updatedServiceProvider = await UserModel.findByIdAndUpdate(
+    id,
+    { name, email, service },
+    { new: true }
+  );
+  return successResponse({
+    res,
+    message: "Service provider updated successfully",
+    data: updatedServiceProvider,
+  });
+};
+//patch update a service provider by ID
+export const patchUpdateServiceProvider = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updateData = req.body;
+  const updatedServiceProvider = await UserModel.findByIdAndUpdate(
+    id,
+    updateData,
+    { new: true }
+  );
+  return successResponse({
+    res,
+    message: "Service provider updated successfully",
+    data: updatedServiceProvider,
+  });
+};
+// Delete a service provider by ID
+export const deleteServiceProvider = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  await UserModel.findByIdAndDelete(id);
+  return successResponse({
+    res,
+    message: "Service provider deleted successfully",
+  });
+};

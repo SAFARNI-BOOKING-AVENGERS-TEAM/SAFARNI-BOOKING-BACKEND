@@ -4,6 +4,8 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
+  role: "user" | "service_provider" | "admin";
+  service?: "flights" | "cars" | "hotels";
   isVerified: boolean;
   role: "user" | "provider" | "admin";
   passwordResetToken?: string;
@@ -42,11 +44,6 @@ const userSchema = new Schema<IUser>(
     isVerified: {
       type: Boolean,
       default: false,
-    },
-    role: {
-      type: String,
-      enum: ["user", "provider", "admin"],
-      default: "user",
     },
     passwordResetToken: String,
     passwordResetExpires: Date,

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { superRefine, z } from "zod";
 
 export const UserSchema = z.object({
   name: z.string().trim().min(2, "Name too short").max(50, "Name too long"),
@@ -9,8 +9,9 @@ export const UserSchema = z.object({
 
   password: z
     .string({ message: "Password is required" })
-    .min(8, "Password must be at least 8 characters")
-    .max(64, "Password is too long"),
+    .min(8, "Password must be at least 8 characters"),
+
+  isVerified: z.boolean().default(false),
 });
 
 export const resetPasswordRequestSchema = z.object({
@@ -54,5 +55,43 @@ export const LoginSchema = z.object({
 export const verifyEmailSchema = z.object({
   params: z.object({
     token: z.string().min(10, "Invalid or expired token"),
+  }),
+});
+// Additional schemas for service provider management
+// Add Service Provider Schema
+export const addServiceProviderSchema = z.object({
+  body: z.strictObject({
+    name: UserSchema.shape.name,
+    email: UserSchema.shape.email,
+    password: UserSchema.shape.password,
+    service: UserSchema.shape.service,
+  }),
+});
+// Update Service Provider Schema
+export const updateServiceProviderSchema = z.object({
+  params: z.object({
+    id: z.string()
+  }),
+  body: z.strictObject({
+    name: UserSchema.shape.name,
+    email: UserSchema.shape.email,
+    service: UserSchema.shape.service,
+  }),
+});
+// Patch Update Service Provider Schema
+export const patchUpdateServiceProviderSchema = z.object({
+  params: z.object({
+    id: z.string()
+  }),
+  body: z.strictObject({
+    name: UserSchema.shape.name.optional(),
+    email: UserSchema.shape.email.optional(),
+    service: UserSchema.shape.service.optional(),
+  }),
+});
+//get service provider by service schema
+export const getServiceProviderByServiceSchema = z.object({
+  query: z.object({
+    service: UserSchema.shape.service,
   }),
 });
