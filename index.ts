@@ -7,7 +7,8 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import providerRouter from "./modules/provider/provider.controller";
 import { createServer } from "http";
-import { Server as SocketIOServer } from "socket.io";
+import { Server as SocketIOServer } from "socket.io"
+import {Request, Response, NextFunction} from "express";
 
 // Database
 import connectDB from "./DB/connect";
@@ -49,7 +50,7 @@ const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
-  handler: (req, res) => {
+  handler: (req: Request, res: Response) => {
     res.status(429).json({
       error_message:
         "Too many requests from this IP, please try again later.",
@@ -65,7 +66,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
-  handler: (req, res) => {
+  handler: (req: Request, res: Response) => {
     res.status(429).json({
       error_message:
         "Too many authentication attempts, please try again later.",
@@ -91,7 +92,7 @@ app.use(globalLimiter);
 app.use(auditLogMiddleware);
 
 // Request Logging Middleware
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`[${req.method}] ${req.url} - body:`, req.body);
 
   res.on("finish", () => {
@@ -140,7 +141,7 @@ app.get(
   "/admin/audit-logs",
   authMiddleware,
   adminMiddleware,
-  async (req, res) => {
+  async (req: Request, res: Response) => {
     const logs = await AuditLogModel.find()
       .sort({ createdAt: -1 })
       .limit(50);
@@ -154,7 +155,7 @@ app.get(
 
 // Root Check
 
-app.get("/", (req, res) => {
+app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
     name: "Travel System Marketplace API",
 

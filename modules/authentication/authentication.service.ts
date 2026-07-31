@@ -100,7 +100,7 @@ export const registerUser = async (req: Request, res: Response) => {
   const userExists = await UserModel.findOne({ email });
   if (userExists) throw new BadRequestException("Email already registered");
 
-const hashedPassword = await hashString(password);
+
 
   const verificationToken = createRandomToken();
   const hashedVerificationToken = crypto
@@ -111,7 +111,7 @@ const hashedPassword = await hashString(password);
   const createdUser = await UserModel.create({
     name,
     email,
-    password: hashedPassword,
+    password,
     emailVerificationToken: hashedVerificationToken,
     emailVerificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
   });
