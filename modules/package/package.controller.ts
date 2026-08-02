@@ -5,6 +5,7 @@ import { optionalAuthMiddleware } from "../../middleware/optionalAuth.middleware
 import { asyncHandler } from "../../utils/response/async.handler";
 import { successResponse } from "../../utils/response/success.response";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
+import { UpdateFeaturedSchema } from "./types/zod.types";
 import { BadRequestException } from "../../utils/response/error.response";
 import { CreatePackageSchema, BookPackageSchema } from "./types/zod.types";
 import {
@@ -13,6 +14,7 @@ import {
   getPackageDetails,
   updatePackageStatus,
   bookPackage,
+  updatePackageFeatured,
 } from "./package.service";
 
 const packageRouter = Router();
@@ -80,6 +82,18 @@ packageRouter.post(
       message: "Package booked successfully",
       data: result,
     });
+  })
+);
+// PATCH /packages/:id/featured — Admin updates featured status
+packageRouter.patch(
+  "/:id/featured",
+  authMiddleware,
+  authorizeRoles("admin"),
+  validateRequest(UpdateFeaturedSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const adminId = (req as any).credentials.user._id;
+    const pkg = await updatePackageFeatured(req.params.id, req.body.featured, adminId);
+    return successResponse({ res, message: "Package featured status updated successfully", data: pkg });
   })
 );
 

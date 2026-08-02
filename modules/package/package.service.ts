@@ -75,7 +75,7 @@ export const createPackage = async (payload: any, userId: string, userRole: stri
   // Admin-created packages are Safarni-curated deals, so they go live
   // immediately. Provider-created packages (from their own services)
   // need Admin approval first.
-const status = userRole === "admin" ? "approved" : "pending";
+  const status = userRole === "admin" ? "approved" : "pending";
   const sourceType = userRole === "admin" ? "curated" : "provider";
 
   return await PackageModel.create({
@@ -98,9 +98,13 @@ export const getPackages = async (userRole?: string, userId?: string) => {
       { status: "approved" },
       { createdBy: userId, status: { $in: ["pending", "rejected"] } },
     ];
-} else {
+  } else {
     query.status = "approved";
-    query.$or = [{ validUntil: { $exists: false } }, { validUntil: { $gte: new Date() } }];
+    query.$and = [
+      {
+        $or: [{ validUntil: { $exists: false } }, { validUntil: { $gte: new Date() } }],
+      },
+    ];
   }
 
   return await PackageModel.find(query).sort({ createdAt: -1 });
@@ -180,7 +184,7 @@ export const bookPackage = async (packageId: string, userId: string, requestedIt
   if (!pkg) {
     throw new NotFoundException("Package not found");
   }
-if (pkg.validUntil && pkg.validUntil < new Date()) {
+  if (pkg.validUntil && pkg.validUntil < new Date()) {
     throw new BadRequestException("This package has expired and is no longer available");
   }
 
@@ -197,4 +201,14 @@ if (pkg.validUntil && pkg.validUntil < new Date()) {
   }
 
   return await createPackageBookingInternal(userId, requestedItems, pkg.discountPercentage);
+};
+export const updatePackageFeatured = async (packageId: string, featured: boolean, adminId: string) => {
+  const pkg = await PackageModel.findById(packageId);
+  if (!pkg) throw new NotFoundException("Package not found");
+
+  pkg.featured = featured;
+  pkg.updatedBy = adminId as any;
+  await pkg.save();
+
+  return pkg;
 };
