@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Socket.io Notification Test</title>
+</head>
+<body>
+  <h2>1. Login</h2>
+  <input id="email" placeholder="Email" value="provider1@test.com" />
+  <input id="password" placeholder="Password" type="password" value="Test1234!" />
+  <button id="loginBtn">Login</button>
+  <p id="status">Not logged in</p>
+
+  <h2>2. Notifications (Live)</h2>
+  <ul id="notifications"></ul>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/socket-test.js"></script>
+</body>
+</html>

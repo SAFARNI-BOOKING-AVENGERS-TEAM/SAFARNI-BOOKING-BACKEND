@@ -4,6 +4,7 @@ export interface IBooking extends Document {
   userId: Types.ObjectId;
   category: "tours" | "flights" | "cars" | "hotels";
   itemId: string;
+  packageBookingId?: string;
   startDate: Date;
   endDate: Date;
   totalPrice: number;
@@ -28,6 +29,9 @@ const bookingSchema = new Schema<IBooking>(
     itemId: {
       type: String,
       required: [true, "Item ID is required"],
+    },
+    packageBookingId: { 
+      type: String
     },
     startDate: {
       type: Date,
