@@ -47,9 +47,7 @@ const ProviderInfoSchema = z.object({
     .optional(),
 });
 
-// ====================
 // CREATE TOUR
-// ====================
 export const CreateTourSchema = z.object({
   body: z.strictObject({
     title: z.string().min(
@@ -154,4 +152,14 @@ export const UpdateTourSchema = z.object({
       .shape
       .body
       .partial(),
+});
+// ADD REVIEW
+export const AddReviewSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, "Tour ID is required"),
+  }),
+  body: z.strictObject({
+    rating: z.number().int().min(1, "Rating must be between 1 and 5").max(5, "Rating must be between 1 and 5"),
+    comment: z.string().max(500, "Comment must be under 500 characters").optional(),
+  }),
 });

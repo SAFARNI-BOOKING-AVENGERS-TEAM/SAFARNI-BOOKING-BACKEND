@@ -7,13 +7,13 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import providerRouter from "./modules/provider/provider.controller";
 import { createServer } from "http";
-import { Server as SocketIOServer } from "socket.io";
+import { initSocket } from "./socket/socket";
+import notificationRouter from "./modules/notification/notification.controller";
+import favoriteRouter from "./modules/favorite/favorite.controller";
+import packageRouter from "./modules/package/package.controller";
 
 // Database
 import connectDB from "./DB/connect";
-
-// Security
-import { verifyToken, TokenType } from "./utils/security/token.security";
 
 // Routers
 import { usersRouter } from "./modules/users/users.controller";
@@ -123,6 +123,12 @@ app.use("/flights", flightRouter);
 
 app.use("/api/flights", flightRouter);
 
+app.use("/notifications", notificationRouter);
+
+app.use("/favorites", favoriteRouter);
+
+app.use("/packages", packageRouter);
+
 // User Routes
 app.use("/users", usersRouter);
 
@@ -186,20 +192,13 @@ app.get("/", (req, res) => {
       },
     ],
 
-    actors: [
-      "guest",
-      "user",
-      "provider",
-      "admin",
-      "support",
-    ],
+    actors: ["guest", "user", "provider", "admin"],
 
     mainFeatures: [
       "Search & Booking",
-      "Secure Payments",
-      "OTP Authentication",
-      "Reviews & Favorites",
-      "Multi-language & Multi-currency",
+      "Role-Based Access (User / Provider / Admin)",
+      "Token-Based Email Verification",
+      "Real-Time Notifications",
     ],
 
     api: {
@@ -210,7 +209,8 @@ app.get("/", (req, res) => {
       cars: "/cars",
       hotels: "/hotels",
       bookings: "/bookings",
-      payments: "/payments",
+      notifications: "/notifications",
+      provider: "/provider",
       admin: "/admin",
     },
 
@@ -237,51 +237,7 @@ export default app;
 // HTTP Server + Socket.io
 
 const httpServer = createServer(app);
-
-export const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: process.env.FRONTEND_URL || "*",
-    credentials: true,
-  },
-});
-
-// Authenticate every socket connection using the same JWT from cookies
-io.use(async (socket, next) => {
-  try {
-    const cookieHeader = socket.handshake.headers.cookie;
-    if (!cookieHeader) {
-      return next(new Error("Authentication required"));
-    }
-
-    const parsedCookies = Object.fromEntries(
-      cookieHeader.split("; ").map((c) => {
-        const [key, ...v] = c.split("=");
-        return [key, v.join("=")];
-      })
-    );
-
-    const token = parsedCookies["access_token"];
-    if (!token) {
-      return next(new Error("Authentication required"));
-    }
-
-    const { user } = await verifyToken(token, TokenType.access);
-    (socket as any).userId = user._id.toString();
-    next();
-  } catch (err) {
-    next(new Error("Invalid or expired token"));
-  }
-});
-
-io.on("connection", (socket) => {
-  const userId = (socket as any).userId;
-  socket.join(userId); // each user gets a private "room" named after their own ID
-  console.log(`[socket]: User ${userId} connected`);
-
-  socket.on("disconnect", () => {
-    console.log(`[socket]: User ${userId} disconnected`);
-  });
-});
+initSocket(httpServer);
 
 // Start Server
 
