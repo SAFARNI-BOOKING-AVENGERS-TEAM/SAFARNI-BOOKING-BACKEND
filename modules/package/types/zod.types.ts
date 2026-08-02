@@ -13,8 +13,7 @@ export const CreatePackageSchema = z.object({
       .enum(["family", "couples", "luxury", "budget", "adventure", "business"])
       .optional(),
     durationLabel: z.string().optional(),
-    featured: z.boolean().optional(),
-    validUntil: z.string().datetime().optional(),
+validUntil: z.string().datetime().optional(),
     items: z
       .array(
         z.object({
@@ -44,5 +43,11 @@ export const BookPackageSchema = z.object({
         })
       )
       .min(1),
+  }),
+});
+export const UpdateFeaturedSchema = z.object({
+  params: z.object({ id: z.string().min(1) }),
+  body: z.strictObject({
+    featured: z.boolean(),
   }),
 });
