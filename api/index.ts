@@ -1,5 +1,5 @@
 import connectDB from "../DB/connect";
-import app from "../index";
+import app from "../app";
 
 let dbConnected = false;
 

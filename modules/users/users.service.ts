@@ -1,6 +1,6 @@
 import { IRequest } from "../../types/request.types";
 import { successResponse } from "../../utils/response/success.response";
-import { Response } from "express";
+import { Request, Response } from "express";
 import UserModel from "../../DB/models/user.model";
 import {
   BadRequestException,
@@ -116,29 +116,32 @@ export const updateProfileInfo = async (
 };
 
 // ADMIN: Update User Role
-export const updateUserRole = async (
-  req: IRequest,
-  res: Response
-) => {
+export const updateUserRole = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { role } = req.body;
+  const { role, providerType } = req.body;
 
   const validRoles = ["user", "provider", "admin"];
-
-  if (!role || !validRoles.includes(role)) {
+  if (!validRoles.includes(role)) {
     throw new BadRequestException(
       `Invalid role. Must be one of: ${validRoles.join(", ")}`
     );
   }
 
-  const user = await UserModel.findById(id);
+  if (role === "provider" && providerType && !["travel", "telecom", "both"].includes(providerType)) {
+    throw new BadRequestException(
+      `Invalid providerType. Must be one of: travel, telecom, both`
+    );
+  }
 
+  const user = await UserModel.findById(id);
   if (!user) {
     throw new NotFoundException("User not found");
   }
 
   user.role = role;
-
+  if (role === "provider" && providerType) {
+    user.providerType = providerType;
+  }
   await user.save();
 
   return successResponse({
@@ -149,6 +152,7 @@ export const updateUserRole = async (
       name: user.name,
       email: user.email,
       role: user.role,
+      providerType: user.providerType,
     },
   });
 };

@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import AuditLogModel from "../DB/models/auditLog.model";
+import esimRouter from "../modules/esim/esim.controller";
 
 // Routers
 import providerRouter from "../modules/provider/provider.controller";
@@ -49,6 +50,7 @@ router.use("/packages", packageRouter);
 router.use("/users", usersRouter);
 router.use("/admin", adminRouter);
 router.use("/provider", providerRouter);
+router.use("/esim", esimRouter);
 
 router.get("/admin/audit-logs", authMiddleware, adminMiddleware, async (req, res) => {
   const logs = await AuditLogModel.find().sort({ createdAt: -1 }).limit(50);

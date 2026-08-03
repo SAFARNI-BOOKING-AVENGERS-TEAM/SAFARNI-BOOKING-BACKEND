@@ -7,6 +7,7 @@ import { successResponse } from "../../utils/response/success.response";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
 import { AddReviewSchema } from "./types/zod.types";
 import { addOrUpdateReview, getTourReviews, deleteReview } from "./tour.service";
+import { requireProviderType } from "../../middleware/providerType.middleware";
 import {
   CreateTourSchema,
   UpdateTourSchema,
@@ -108,7 +109,7 @@ router.post(
     "admin",
     "provider"
   ),
-
+requireProviderType("travel", "both"),
   validateRequest(
     CreateTourSchema
   ),
