@@ -8,6 +8,7 @@ import { validateRequest } from "../../middleware/requestValidation.middleware";
 import { UpdateFeaturedSchema } from "./types/zod.types";
 import { BadRequestException } from "../../utils/response/error.response";
 import { CreatePackageSchema, BookPackageSchema } from "./types/zod.types";
+import { requireProviderType } from "../../middleware/providerType.middleware";
 import {
   createPackage,
   getPackages,
@@ -44,6 +45,7 @@ packageRouter.post(
   "/",
   authMiddleware,
   authorizeRoles("admin", "provider"),
+  requireProviderType("travel", "both"),
   validateRequest(CreatePackageSchema),
   asyncHandler(async (req: Request, res: Response) => {
     const user = (req as any).credentials.user;
