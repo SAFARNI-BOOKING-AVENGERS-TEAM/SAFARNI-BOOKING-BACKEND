@@ -37,6 +37,8 @@ import { globalErrorHandler } from "./utils/response/error.response";
 
 // Models
 import AuditLogModel from "./DB/models/auditLog.model";
+import paymentRouter from "./modules/payment/payment.routes";
+import webhookRouter from "./modules/payment/webhook.routes";
 
 const app = express();
 
@@ -123,6 +125,9 @@ app.use("/cars", carRouter);
 app.use("/flights", flightRouter);
 
 app.use("/api/flights", flightRouter);
+// Payment Routes
+app.use("/payments/webhook", webhookRouter);
+app.use("/payments", paymentRouter);
 
 // User Routes
 app.use("/users", usersRouter);
