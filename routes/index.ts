@@ -18,6 +18,7 @@ import hotelRouter from "../modules/hotel/hotel.controller";
 import bookingRouter from "../modules/booking/booking.controller";
 import carRouter from "../modules/car/car.controller";
 import flightRouter from "../modules/flight/flight.controller";
+import paymentRouter from "../modules/payment/payment.controller";
 
 const router = Router();
 
@@ -51,6 +52,7 @@ router.use("/users", usersRouter);
 router.use("/admin", adminRouter);
 router.use("/provider", providerRouter);
 router.use("/esim", esimRouter);
+router.use("/payments", paymentRouter);
 
 router.get("/admin/audit-logs", authMiddleware, adminMiddleware, async (req, res) => {
   const logs = await AuditLogModel.find().sort({ createdAt: -1 }).limit(50);

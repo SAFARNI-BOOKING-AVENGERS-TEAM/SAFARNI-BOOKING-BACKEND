@@ -24,3 +24,9 @@ export const UpdateESIMPlanStatusSchema = z.object({
     status: z.enum(["approved", "rejected"]),
   }),
 });
+export const PurchaseESIMSchema = z.object({
+  body: z.strictObject({
+    planId: z.string().min(1, "planId is required"),
+    packageBookingId: z.string().optional(),
+  }),
+});

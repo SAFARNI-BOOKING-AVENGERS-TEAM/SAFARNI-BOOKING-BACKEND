@@ -20,6 +20,13 @@ import {
   deleteESIMPlan,
   updateESIMPlanStatus,
 } from "./esim.service";
+import { PurchaseESIMSchema } from "./types/zod.types";
+import {
+  purchaseESIM,
+  getMyESIMOrders,
+  getESIMOrderDetails,
+  activateESIM,
+} from "./esim.service";
 
 const esimRouter = Router();
 
@@ -99,6 +106,56 @@ esimRouter.patch(
     const adminId = (req as any).credentials.user._id;
     const plan = await updateESIMPlanStatus(req.params.id, req.body.status, adminId);
     return successResponse({ res, message: `eSIM plan ${req.body.status} successfully`, data: plan });
+  })
+);
+// POST /esim/orders — purchase an eSIM plan
+esimRouter.post(
+  "/orders",
+  authMiddleware,
+  validateRequest(PurchaseESIMSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const { planId, packageBookingId } = req.body;
+    const order = await purchaseESIM(userId, planId, packageBookingId);
+    return successResponse({
+      res,
+      statusCode: 201,
+      message: "eSIM purchased successfully",
+      data: order,
+    });
+  })
+);
+
+// GET /esim/orders/my-orders — list my eSIM orders
+esimRouter.get(
+  "/orders/my-orders",
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const orders = await getMyESIMOrders(userId);
+    return successResponse({ res, message: "eSIM orders retrieved successfully", data: orders });
+  })
+);
+
+// GET /esim/orders/:id — order details
+esimRouter.get(
+  "/orders/:id",
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const order = await getESIMOrderDetails(req.params.id, userId);
+    return successResponse({ res, message: "eSIM order retrieved successfully", data: order });
+  })
+);
+
+// PATCH /esim/orders/:id/activate — activate the eSIM
+esimRouter.patch(
+  "/orders/:id/activate",
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const order = await activateESIM(req.params.id, userId);
+    return successResponse({ res, message: "eSIM activated successfully", data: order });
   })
 );
 
