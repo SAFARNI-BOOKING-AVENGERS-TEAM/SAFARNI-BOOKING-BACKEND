@@ -15,7 +15,10 @@ paymentRouter.post(
   validateRequest(CreatePaymentIntentSchema),
   asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as any).credentials.user._id;
-    const result = await createPaymentIntent(userId, req.body.bookingId);
+    const result = await createPaymentIntent(userId, {
+      bookingId: req.body.bookingId,
+      packageBookingId: req.body.packageBookingId,
+    });
     return successResponse({
       res,
       statusCode: 201,

@@ -171,7 +171,9 @@ export const purchaseESIM = async (userId: string, planId: string, packageBookin
     const provider = getESIMProvider();
     const profile = await provider.provisionESIM(planId);
 
-    order.profile = profile;
+    const expiresAt = new Date(Date.now() + plan.validityDays * 24 * 60 * 60 * 1000);
+
+    order.profile = { ...profile, expiresAt };
     order.status = "completed";
     await order.save();
 
@@ -202,6 +204,18 @@ export const getESIMOrderDetails = async (orderId: string, userId: string) => {
   if (order.userId.toString() !== userId.toString()) {
     throw new ForbiddenException("You are not authorized to view this order");
   }
+
+  // Lazily flip an expired-but-not-yet-marked profile when someone checks it
+  if (
+    order.profile &&
+    order.profile.status === "ready" &&
+    order.profile.expiresAt &&
+    order.profile.expiresAt < new Date()
+  ) {
+    order.profile.status = "expired";
+    await order.save();
+  }
+
   return order;
 };
 
@@ -219,7 +233,11 @@ export const activateESIM = async (orderId: string, userId: string) => {
   if (order.profile.status === "activated") {
     throw new BadRequestException("This eSIM has already been activated");
   }
-
+  if (order.profile.expiresAt && order.profile.expiresAt < new Date()) {
+    order.profile.status = "expired";
+    await order.save();
+    throw new BadRequestException("This eSIM has expired and can no longer be activated");
+  }
   const provider = getESIMProvider();
   const activatedProfile = await provider.activateESIM(order.profile.iccid);
 

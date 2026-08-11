@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 
 import routes from "./routes";
+import webhookRouter from "./modules/payment/payment.webhook";
 import { notFound } from "./middleware/notFound.middleware";
 import { auditLogMiddleware } from "./middleware/auditLog.middleware";
 import { globalErrorHandler } from "./utils/response/error.response";
@@ -28,6 +29,14 @@ const globalLimiter = rateLimit({
     });
   },
 });
+
+// Stripe Webhook — MUST be registered before express.json(),
+// because Stripe needs the raw request body to verify the signature.
+app.use(
+  "/webhooks/stripe",
+  express.raw({ type: "application/json" })
+);
+app.use("/webhooks", webhookRouter);
 
 // Global Middlewares
 

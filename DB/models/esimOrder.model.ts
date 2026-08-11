@@ -13,6 +13,7 @@ export interface IESIMOrder extends Document {
     qrCode: string;
     smdpAddress: string;
     status: "ready" | "activated" | "expired" | "suspended";
+    expiresAt?: Date;
   };
 }
 
@@ -37,6 +38,7 @@ const esimOrderSchema = new Schema<IESIMOrder>(
         type: String,
         enum: ["ready", "activated", "expired", "suspended"],
       },
+      expiresAt: { type: Date },
     },
   },
   { timestamps: true }
