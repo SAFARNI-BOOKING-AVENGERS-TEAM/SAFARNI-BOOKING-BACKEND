@@ -60,7 +60,10 @@ favoriteRouter.delete(
   authMiddleware,
   asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as any).credentials.user._id;
-    const { category, itemId } = req.params;
+    const { category, itemId } = req.params as {
+      category: "tours" | "hotels" | "cars" | "flights";
+      itemId: string;
+    };
 
     const favorite = await FavoriteModel.findOneAndDelete({
       userId,

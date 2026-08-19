@@ -112,7 +112,16 @@ export const deleteESIMPlan = async (planId: string, userId: string, userRole: s
     throw new ForbiddenException("You can only delete eSIM plans you own");
   }
 
-  // Note: active-order protection will be added once eSIM Orders exist (Phase 3)
+  const activeOrder = await ESIMOrderModel.findOne({
+    planId,
+    status: { $in: ["pending", "processing", "completed"] },
+  });
+
+  if (activeOrder) {
+    throw new BadRequestException(
+      "Cannot delete this eSIM plan because it has existing orders"
+    );
+  }
 
   await ESIMPlanModel.findByIdAndDelete(planId);
   return plan;

@@ -137,3 +137,38 @@ export const confirmPayment = async (userId: string, paymentIntentId: string) =>
 
   return await finalizePayment(paymentIntentId);
 };
+// Called when a booking is cancelled. Finds the payment that covered this
+// booking (whether standalone or part of a package) and refunds just this
+// booking's share via Stripe — not the whole payment if it covered more.
+export const refundBookingPayment = async (bookingId: string, packageBookingId: string | undefined, amount: number) => {
+  const payment = await PaymentModel.findOne({
+    status: "succeeded",
+    ...(packageBookingId ? { packageBookingId } : { bookingId }),
+  });
+
+  if (!payment) {
+    // Nothing was ever paid for this booking — nothing to refund
+    return null;
+  }
+
+  // Guard against refunding the same booking twice
+  const alreadyRefunded = payment.refunds.some((r) => r.bookingId === bookingId);
+  if (alreadyRefunded) {
+    return null;
+  }
+
+  const refund = await stripeClient.refunds.create({
+    payment_intent: payment.stripePaymentIntentId,
+    amount: Math.round(amount * 100),
+  });
+
+  payment.refunds.push({
+    bookingId,
+    amount,
+    stripeRefundId: refund.id,
+    createdAt: new Date(),
+  });
+  await payment.save();
+
+  return refund;
+};

@@ -12,13 +12,12 @@ import {
   UnAuthorizedException,
   ForbiddenException,
 } from "../../utils/response/error.response";
+import { refundBookingPayment } from "../payment/payment.service";
 import { successResponse } from "../../utils/response/success.response";
 
-// =========================================================
 // INTERNAL: books a single item (used directly by createBooking,
 // and 4x in a row by createPackageBooking). Throws on any failure —
 // the caller decides what to do (reject the whole request, or roll back).
-// =========================================================
 interface SingleBookingInput {
   userId: string;
   category: "hotels" | "tours" | "flights" | "cars";
@@ -224,9 +223,7 @@ const rollbackBooking = async (bookingId: string) => {
   await booking.save();
 };
 
-// =========================================================
 // PUBLIC: single-item booking endpoint (unchanged behavior)
-// =========================================================
 export const createBooking = async (req: Request, res: Response) => {
   const userId = (req as any).credentials?.user?._id;
   if (!userId) {
@@ -321,12 +318,28 @@ export const cancelBooking = async (req: Request, res: Response) => {
     }
   }
 
-  booking.status = "cancelled";
+booking.status = "cancelled";
   await booking.save();
+
+  let refundIssued = false;
+  try {
+    const refund = await refundBookingPayment(
+      booking._id.toString(),
+      booking.packageBookingId,
+      booking.totalPrice
+    );
+    refundIssued = !!refund;
+  } catch (err) {
+    console.error("[refund] Failed to process refund for booking", booking._id, err);
+    // Don't block the cancellation itself if the refund call fails —
+    // the booking is still cancelled; the refund can be retried/handled manually.
+  }
 
   return successResponse({
     res,
-    message: "Booking cancelled successfully",
+    message: refundIssued
+      ? "Booking cancelled and payment refunded successfully"
+      : "Booking cancelled successfully",
     data: booking,
   });
 };
