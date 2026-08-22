@@ -25,7 +25,8 @@ export type BookingCurrency = "USD";
 export interface IBooking extends Document {
   userId: Types.ObjectId;
   category: "tours" | "flights" | "cars" | "hotels";
-  itemId: string;
+  itemModel: "Tour" | "Flight" | "Car" | "Hotel";
+  itemId: Types.ObjectId;
   packageBookingId?: string;
   startDate: Date;
   endDate: Date;
@@ -54,10 +55,18 @@ const bookingSchema = new Schema<IBooking>(
       enum: ["tours", "flights", "cars", "hotels"],
       required: [true, "Booking category is required"],
     },
-    itemId: {
+    itemModel: {
       type: String,
-      required: [true, "Item ID is required"],
+      required: true,
+      enum: ["Tour", "Flight", "Car", "Hotel"],
     },
+    itemId: {
+      type: Types.ObjectId,
+      required: [true, "Item ID is required"],
+      refPath: "itemModel" // Dynamic reference based on itemModel field
+        },
+     
+    
     packageBookingId: { 
       type: String
     },

@@ -64,9 +64,13 @@ export const addServiceProviderSchema = z.object({
     name: UserSchema.shape.name,
     email: UserSchema.shape.email,
     password: UserSchema.shape.password,
-    service: UserSchema.shape.service,
+    service: z.enum(["flights", "cars", "hotels"], {
+      message: "Service is required",
+    }),
   }),
 });
+ 
+
 // Update Service Provider Schema
 export const updateServiceProviderSchema = z.object({
   params: z.object({
@@ -75,7 +79,9 @@ export const updateServiceProviderSchema = z.object({
   body: z.strictObject({
     name: UserSchema.shape.name,
     email: UserSchema.shape.email,
-    service: UserSchema.shape.service,
+    service: z.enum(["flights", "cars", "hotels"], {
+      message: "Service is required",
+    }),
   }),
 });
 // Patch Update Service Provider Schema
@@ -86,12 +92,16 @@ export const patchUpdateServiceProviderSchema = z.object({
   body: z.strictObject({
     name: UserSchema.shape.name.optional(),
     email: UserSchema.shape.email.optional(),
-    service: UserSchema.shape.service.optional(),
+    service: z.enum(["flights", "cars", "hotels"], {
+      message: "Service is required",
+    }).optional(),
   }),
 });
 //get service provider by service schema
 export const getServiceProviderByServiceSchema = z.object({
   query: z.object({
-    service: UserSchema.shape.service,
+    service: z.enum(["flights", "cars", "hotels"], {
+      message: "Service is required",
+    }),
   }),
 });

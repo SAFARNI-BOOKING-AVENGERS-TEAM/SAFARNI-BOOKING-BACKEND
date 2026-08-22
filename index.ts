@@ -5,18 +5,17 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
-import providerRouter from "./modules/provider/provider.controller";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io"
 import {Request, Response, NextFunction} from "express";
 
 // Database
 import connectDB from "./DB/connect";
-
 // Security
 import { verifyToken, TokenType } from "./utils/security/token.security";
 
 // Routers
+import providerRouter from "./modules/provider/provider.controller";
 import { usersRouter } from "./modules/users/users.controller";
 import adminRouter from "./modules/admin/admin.controller";
 import authRouter from "./modules/authentication/authentication.controller";
@@ -25,6 +24,9 @@ import hotelRouter from "./modules/hotel/hotel.controller";
 import bookingRouter from "./modules/booking/booking.controller";
 import carRouter from "./modules/car/car.controller";
 import flightRouter from "./modules/flight/flight.controller";
+// Payment Routes
+import paymentRouter from "./modules/payment/payment.routes";
+import webhookRouter from "./modules/payment/webhook.routes";
 
 // Middlewares
 import { notFound } from "./middleware/notFound.middleware";
@@ -37,15 +39,15 @@ import { globalErrorHandler } from "./utils/response/error.response";
 
 // Models
 import AuditLogModel from "./DB/models/auditLog.model";
-import paymentRouter from "./modules/payment/payment.routes";
-import webhookRouter from "./modules/payment/webhook.routes";
+
 
 const app = express();
 
 const port = process.env.PORT || 3000;
 
 // Rate Limiters
-
+// Global Rate Limiter
+// Limit each IP to 200 requests per 15 minutes
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 200,
@@ -82,10 +84,10 @@ const authLimiter = rateLimit({
 
 app.use(helmet());
 
-app.use(cors());
+app.use(cors({origin: process.env.FRONTEND_URL , credentials: true}));
 
 app.use(express.json());
-
+//
 app.use(cookieParser());
 app.use(express.static("public"));
 
@@ -232,9 +234,7 @@ app.get("/", (req: Request, res: Response) => {
 
 app.use(notFound);
 
-// Global Error Handler
 
-app.use(globalErrorHandler);
 
 // Export App
 
@@ -246,7 +246,7 @@ const httpServer = createServer(app);
 
 export const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "*",
+    origin: process.env.FRONTEND_URL ,
     credentials: true,
   },
 });
@@ -288,6 +288,9 @@ io.on("connection", (socket) => {
     console.log(`[socket]: User ${userId} disconnected`);
   });
 });
+// Global Error Handler
+
+app.use(globalErrorHandler);
 
 // Start Server
 

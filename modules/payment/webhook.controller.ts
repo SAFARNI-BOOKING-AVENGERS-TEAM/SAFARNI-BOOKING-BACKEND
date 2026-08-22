@@ -4,6 +4,10 @@ import { stripeClient, STRIPE_WEBHOOK_SECRET } from "./stripe.service";
 import paymentRepository from "./payment.repository";
 import { markPaymentFailed, markPaymentPaid } from "./payment.service";
 
+
+type StripeWebhookRequest = Request & {
+  rawBody?: Buffer;
+};
 /**
  * Small, non-sensitive subset of event.data.object kept for audit/debugging.
  * Deliberately NOT storing the full Stripe object — Checkout Session and
@@ -69,7 +73,7 @@ async function dispatchEvent(event: Stripe.Event): Promise<void> {
   }
 }
 
-export const handleStripeWebhook = async (req: Request, res: Response) => {
+export const handleStripeWebhook = async (req: StripeWebhookRequest, res: Response) => {
   const signature = req.headers["stripe-signature"];
 
   if (!signature || typeof signature !== "string") {

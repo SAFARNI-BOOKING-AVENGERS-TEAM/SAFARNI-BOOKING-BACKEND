@@ -8,7 +8,7 @@ export interface IUser extends Document {
   role: "user" | "service_provider" | "admin";
   service?: "flights" | "cars" | "hotels";
   isVerified: boolean;
-  role: "user" | "provider" | "admin";
+ 
   passwordResetToken?: string;
   passwordResetExpires?: Date;
   emailVerificationToken?: string;

@@ -6,6 +6,14 @@ import {
   verifyEmail,
   registerUser,
   logout,
+  refreshAccessToken,
+  addServiceProvider,
+  getServiceProviders,
+  
+  patchUpdateServiceProvider,
+  deleteServiceProvider,
+  getServiceProviderById,
+  updateServiceProvider,
 } from "./authentication.service";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
 import {
@@ -13,6 +21,11 @@ import {
   resetPasswordConfirmSchema,
   LoginSchema,
   verifyEmailSchema,
+  RegisterSchema,
+  addServiceProviderSchema,
+  updateServiceProviderSchema,
+  patchUpdateServiceProviderSchema,
+ 
 } from "./types/zod.types";
 import { asyncHandler } from "../../utils/response/async.handler";
 
@@ -63,34 +76,35 @@ authRouter.post(
 authRouter.post(
   "/service-providers",
   validateRequest(addServiceProviderSchema),
-  addServiceProvider
+  asyncHandler(addServiceProvider)
 );
 // get all service providers
 authRouter.get(
   "/service-providers",
-  getServiceProviders
+  asyncHandler(getServiceProviders)
 );
+
 //get a specific service provider by ID
 authRouter.get(
   "/service-providers/:id",
-  getServiceProviderById
+  asyncHandler(getServiceProviderById)
 );
 //update a service provider by ID
 
 authRouter.put(
   "/service-providers/:id",
   validateRequest(updateServiceProviderSchema),
-  updateServiceProvider
+  asyncHandler(updateServiceProvider)
 );
 //patch update a service provider by ID
 authRouter.patch(
   "/service-providers/:id",
   validateRequest(patchUpdateServiceProviderSchema),
-  patchUpdateServiceProvider
+  asyncHandler(patchUpdateServiceProvider)
 );
 //delete a service provider by ID
 authRouter.delete(
   "/service-providers/:id",
-  deleteServiceProvider
+  asyncHandler(deleteServiceProvider)
 );
 export default authRouter;

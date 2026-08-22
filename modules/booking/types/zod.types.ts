@@ -5,9 +5,8 @@ export const CreateBookingSchema = z.object({
     category: z.enum(["tours", "flights", "cars", "hotels"], {
       message: "Category is required",
     }),
-    itemId: z.string({
-      message: "Item ID is required",
-    }).min(1, "Item ID cannot be empty"),
+    itemModel: z.enum(["Tour", "Flight", "Car", "Hotel"]),
+    
     startDate: z.string({
       message: "Start date is required",
     }).refine((val) => !isNaN(Date.parse(val)), {
