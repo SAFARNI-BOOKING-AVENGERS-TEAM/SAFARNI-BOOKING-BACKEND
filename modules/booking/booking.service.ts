@@ -5,6 +5,7 @@ import RoomModel from "../../DB/models/room.model";
 import TourModel from "../../DB/models/tour.model";
 import CarModel from "../../DB/models/car.model";
 import FlightModel from "../../DB/models/flight.model";
+import { withLock } from "../../utils/concurrency/lock";
 import { sendNotification } from "../../utils/notifications/sendNotification";
 import {
   BadRequestException,
@@ -28,7 +29,6 @@ interface SingleBookingInput {
   discountMultiplier?: number; // e.g. 0.85 for a 15% package discount
   packageBookingId?: string;
 }
-
 export const createSingleBooking = async ({
   userId,
   category,
@@ -40,7 +40,6 @@ export const createSingleBooking = async ({
   packageBookingId,
 }: SingleBookingInput) => {
   // Prevent a user from booking overlapping Car and Flight reservations
-  // (mutually exclusive: can't be driving and flying at the same time)
   if (category === "cars" || category === "flights") {
     const conflictingBooking = await BookingModel.findOne({
       userId,
@@ -57,127 +56,135 @@ export const createSingleBooking = async ({
     }
   }
 
-  let totalPrice = 0;
   const quantity = Number(details?.guests || details?.quantity || 1);
-  let ownerId: string | null = null;
 
-  if (category === "hotels") {
-    // itemId is Room ID
-    const room = await RoomModel.findById(itemId);
-    if (!room) {
-      throw new NotFoundException("Room not found");
-    }
+  // Everything that reads-then-writes the same resource (availability check +
+  // seat/capacity decrement) happens inside a lock scoped to this exact item,
+  // so two simultaneous requests for the same room/car/flight/tour can't both
+  // pass the availability check before either one commits.
+  const { totalPrice, ownerId } = await withLock(`booking:${category}:${itemId}`, async () => {
+    let price = 0;
+    let owner: string | null = null;
 
-    const overlappingBooking = await BookingModel.findOne({
-      category: "hotels",
-      itemId,
-      status: { $ne: "cancelled" },
-      startDate: { $lt: end },
-      endDate: { $gt: start },
-    });
+    if (category === "hotels") {
+      const room = await RoomModel.findById(itemId);
+      if (!room) {
+        throw new NotFoundException("Room not found");
+      }
 
-    if (overlappingBooking) {
-      throw new BadRequestException(
-        "This room is already booked for the selected dates"
+      const overlappingBooking = await BookingModel.findOne({
+        category: "hotels",
+        itemId,
+        status: { $ne: "cancelled" },
+        startDate: { $lt: end },
+        endDate: { $gt: start },
+      });
+
+      if (overlappingBooking) {
+        throw new BadRequestException(
+          "This room is already booked for the selected dates"
+        );
+      }
+
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const nights = diffDays > 0 ? diffDays : 1;
+
+      price = room.pricePerNight * nights;
+
+      const hotel = await HotelModel.findById(room.hotelId);
+      owner = hotel?.createdBy?.toString() || null;
+    } else if (category === "tours") {
+      const tour = await TourModel.findById(itemId);
+      if (!tour) {
+        throw new NotFoundException("Tour not found");
+      }
+
+      const matchedStartDate = tour.startDates?.find(
+        (sd) => new Date(sd.date).toDateString() === start.toDateString()
       );
-    }
 
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const nights = diffDays > 0 ? diffDays : 1;
+      if (!matchedStartDate) {
+        throw new BadRequestException(
+          "This tour is not available on the selected start date"
+        );
+      }
 
-    totalPrice = room.pricePerNight * nights;
+      const existingBookings = await BookingModel.find({
+        category: "tours",
+        itemId,
+        status: { $ne: "cancelled" },
+        startDate: start,
+      });
 
-    const hotel = await HotelModel.findById(room.hotelId);
-    ownerId = hotel?.createdBy?.toString() || null;
-  } else if (category === "tours") {
-    const tour = await TourModel.findById(itemId);
-    if (!tour) {
-      throw new NotFoundException("Tour not found");
-    }
-
-    const matchedStartDate = tour.startDates?.find(
-      (sd) => new Date(sd.date).toDateString() === start.toDateString()
-    );
-
-    if (!matchedStartDate) {
-      throw new BadRequestException(
-        "This tour is not available on the selected start date"
+      const alreadyBooked = existingBookings.reduce(
+        (sum, b) => sum + Number(b.details?.guests || b.details?.quantity || 1),
+        0
       );
-    }
 
-    const existingBookings = await BookingModel.find({
-      category: "tours",
-      itemId,
-      status: { $ne: "cancelled" },
-      startDate: start,
-    });
+      if (alreadyBooked + quantity > matchedStartDate.capacity) {
+        throw new BadRequestException(
+          `Only ${Math.max(matchedStartDate.capacity - alreadyBooked, 0)} spot(s) left for this date`
+        );
+      }
 
-    const alreadyBooked = existingBookings.reduce(
-      (sum, b) => sum + Number(b.details?.guests || b.details?.quantity || 1),
-      0
-    );
-
-    if (alreadyBooked + quantity > matchedStartDate.capacity) {
-      throw new BadRequestException(
-        `Only ${Math.max(matchedStartDate.capacity - alreadyBooked, 0)} spot(s) left for this date`
+      const selectedTier = details?.priceTier || "Standard";
+      const priceTier = tour.priceTiers.find(
+        (t) => t.type.toLowerCase() === selectedTier.toLowerCase()
       );
+      const unitPrice = priceTier ? priceTier.price : (tour.priceTiers[0]?.price || 100);
+
+      price = unitPrice * quantity;
+      owner = tour.createdBy?.toString() || null;
+    } else if (category === "flights") {
+      const flight = await FlightModel.findById(itemId);
+      if (!flight) {
+        throw new NotFoundException("Flight not found");
+      }
+      if (flight.availableSeats < quantity) {
+        throw new BadRequestException("Not enough seats available");
+      }
+      price = flight.price * quantity;
+      flight.availableSeats -= quantity;
+      await flight.save();
+      owner = flight.createdBy?.toString() || null;
+    } else if (category === "cars") {
+      const car = await CarModel.findById(itemId);
+      if (!car) {
+        throw new NotFoundException("Car not found");
+      }
+      if (!car.available) {
+        throw new BadRequestException("Car is not available for rental");
+      }
+
+      const overlappingBooking = await BookingModel.findOne({
+        category: "cars",
+        itemId,
+        status: { $ne: "cancelled" },
+        startDate: { $lt: end },
+        endDate: { $gt: start },
+      });
+
+      if (overlappingBooking) {
+        throw new BadRequestException(
+          "This car is already booked for the selected dates"
+        );
+      }
+
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const days = diffDays > 0 ? diffDays : 1;
+
+      price = car.pricePerDay * days;
+      owner = car.createdBy?.toString() || null;
+    } else {
+      throw new BadRequestException("Invalid booking category");
     }
 
-    const selectedTier = details?.priceTier || "Standard";
-    const priceTier = tour.priceTiers.find(
-      (t) => t.type.toLowerCase() === selectedTier.toLowerCase()
-    );
-    const unitPrice = priceTier ? priceTier.price : (tour.priceTiers[0]?.price || 100);
+    return { totalPrice: price, ownerId: owner };
+  });
 
-    totalPrice = unitPrice * quantity;
-    ownerId = tour.createdBy?.toString() || null;
-  } else if (category === "flights") {
-    const flight = await FlightModel.findById(itemId);
-    if (!flight) {
-      throw new NotFoundException("Flight not found");
-    }
-    if (flight.availableSeats < quantity) {
-      throw new BadRequestException("Not enough seats available");
-    }
-    totalPrice = flight.price * quantity;
-    flight.availableSeats -= quantity;
-    await flight.save();
-    ownerId = flight.createdBy?.toString() || null;
-  } else if (category === "cars") {
-    const car = await CarModel.findById(itemId);
-    if (!car) {
-      throw new NotFoundException("Car not found");
-    }
-    if (!car.available) {
-      throw new BadRequestException("Car is not available for rental");
-    }
-
-    const overlappingBooking = await BookingModel.findOne({
-      category: "cars",
-      itemId,
-      status: { $ne: "cancelled" },
-      startDate: { $lt: end },
-      endDate: { $gt: start },
-    });
-
-    if (overlappingBooking) {
-      throw new BadRequestException(
-        "This car is already booked for the selected dates"
-      );
-    }
-
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const days = diffDays > 0 ? diffDays : 1;
-
-    totalPrice = car.pricePerDay * days;
-    ownerId = car.createdBy?.toString() || null;
-  } else {
-    throw new BadRequestException("Invalid booking category");
-  }
-
-  totalPrice = Math.round(totalPrice * discountMultiplier * 100) / 100;
+  const finalPrice = Math.round(totalPrice * discountMultiplier * 100) / 100;
 
   const booking = await BookingModel.create({
     userId,
@@ -185,7 +192,7 @@ export const createSingleBooking = async ({
     itemId,
     startDate: start,
     endDate: end,
-    totalPrice,
+    totalPrice: finalPrice,
     status: "pending",
     details: details || {},
     ...(packageBookingId && { packageBookingId }),
