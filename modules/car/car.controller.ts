@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { adminMiddleware } from "../../middleware/admin.middleware";
+import { authorizeRoles } from "../../middleware/admin.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
+import { requireProviderType } from "../../middleware/providerType.middleware";
 import {
   CreateCarSchema,
   UpdateCarSchema,
@@ -12,6 +15,7 @@ import {
   getCarById,
   updateCar,
   deleteCar,
+  updateCarStatus,
 } from "./car.service";
 
 const carRouter = Router();
@@ -26,6 +30,8 @@ carRouter.get("/:id", asyncHandler(getCarById));
 carRouter.post(
   "/createCar",
   authMiddleware,
+  authorizeRoles("admin", "provider"),
+  requireProviderType("travel", "both"),
   validateRequest(CreateCarSchema),
   asyncHandler(createCar)
 );
@@ -43,6 +49,14 @@ carRouter.delete(
   "/deleteCar/:id",
   authMiddleware,
   asyncHandler(deleteCar)
+);
+
+// ADMIN APPROVE / REJECT CAR
+carRouter.patch(
+  "/admin/:id/status",
+  authMiddleware,
+  adminMiddleware,
+  asyncHandler(updateCarStatus)
 );
 
 export default carRouter;

@@ -1,28 +1,37 @@
 import { IRequest } from "../../types/request.types";
-import { successResponse } from "./../../utils/response/success.response";
-import {  Response } from "express";
+import { successResponse } from "../../utils/response/success.response";
+import { Request, Response } from "express";
 import UserModel from "../../DB/models/user.model";
-import { BadRequestException, NotFoundException } from "../../utils/response/error.response";
+import {
+  BadRequestException,
+  NotFoundException,
+} from "../../utils/response/error.response";
 
 export const myProfile = async (req: IRequest, res: Response) => {
   return successResponse({
     res,
-    data:req.credentials?.user
+    data: req.credentials?.user,
   });
 };
 
-export const updateProfilePicture = async (req: IRequest, res: Response) => {
+export const updateProfilePicture = async (
+  req: IRequest,
+  res: Response
+) => {
   const userId = req.credentials?.user?._id;
+
   if (!userId) {
     throw new BadRequestException("Unauthorized access");
   }
 
   const file = (req as any).file;
+
   if (!file) {
     throw new BadRequestException("Please upload an image file");
   }
 
   const user = await UserModel.findById(userId);
+
   if (!user) {
     throw new NotFoundException("User not found");
   }
@@ -31,6 +40,7 @@ export const updateProfilePicture = async (req: IRequest, res: Response) => {
     url: file.path,
     publicId: file.filename,
   };
+
   await user.save();
 
   return successResponse({
@@ -42,8 +52,12 @@ export const updateProfilePicture = async (req: IRequest, res: Response) => {
   });
 };
 
-export const updateProfileInfo = async (req: IRequest, res: Response) => {
+export const updateProfileInfo = async (
+  req: IRequest,
+  res: Response
+) => {
   const userId = req.credentials?.user?._id;
+
   if (!userId) {
     throw new BadRequestException("Unauthorized access");
   }
@@ -51,10 +65,13 @@ export const updateProfileInfo = async (req: IRequest, res: Response) => {
   const { name, email } = req.body;
 
   if (!name && !email) {
-    throw new BadRequestException("Please provide name or email to update");
+    throw new BadRequestException(
+      "Please provide name or email to update"
+    );
   }
 
   const user = await UserModel.findById(userId);
+
   if (!user) {
     throw new NotFoundException("User not found");
   }
@@ -63,13 +80,22 @@ export const updateProfileInfo = async (req: IRequest, res: Response) => {
     user.name = name;
   }
 
-  if (email && email.toLowerCase() !== user.email.toLowerCase()) {
-    const emailExists = await UserModel.findOne({ email: email.toLowerCase() });
+  if (
+    email &&
+    email.toLowerCase() !== user.email.toLowerCase()
+  ) {
+    const emailExists = await UserModel.findOne({
+      email: email.toLowerCase(),
+    });
+
     if (emailExists) {
-      throw new BadRequestException("Email already registered by another user");
+      throw new BadRequestException(
+        "Email already registered by another user"
+      );
     }
-    user.email = email;
-    user.isVerified = false; // Re-verify email upon change
+
+    user.email = email.toLowerCase();
+    user.isVerified = false;
   }
 
   await user.save();
@@ -85,6 +111,48 @@ export const updateProfileInfo = async (req: IRequest, res: Response) => {
         isVerified: user.isVerified,
         profilePicture: user.profilePicture,
       },
+    },
+  });
+};
+
+// ADMIN: Update User Role
+export const updateUserRole = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { role, providerType } = req.body;
+
+  const validRoles = ["user", "provider", "admin"];
+  if (!validRoles.includes(role)) {
+    throw new BadRequestException(
+      `Invalid role. Must be one of: ${validRoles.join(", ")}`
+    );
+  }
+
+  if (role === "provider" && providerType && !["travel", "telecom", "both"].includes(providerType)) {
+    throw new BadRequestException(
+      `Invalid providerType. Must be one of: travel, telecom, both`
+    );
+  }
+
+  const user = await UserModel.findById(id);
+  if (!user) {
+    throw new NotFoundException("User not found");
+  }
+
+  user.role = role;
+  if (role === "provider" && providerType) {
+    user.providerType = providerType;
+  }
+  await user.save();
+
+  return successResponse({
+    res,
+    message: `User role updated to "${role}" successfully`,
+    data: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      providerType: user.providerType,
     },
   });
 };

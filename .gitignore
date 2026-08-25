@@ -4,3 +4,7 @@ dist
 coverage
 config.bat
 uploads/
+<<<<<<< HEAD
+=======
+.env
+>>>>>>> a41c8a2988e9467e725cd9471579e5f4a603f23a

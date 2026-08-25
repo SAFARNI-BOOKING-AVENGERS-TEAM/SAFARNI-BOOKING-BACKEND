@@ -1,7 +1,7 @@
-import { IRequest } from './../types/request.types';
-import { ForbiddenException } from "./../utils/response/error.response";
-import { verifyToken } from "./../utils/security/token.security";
-import {  Response, NextFunction } from "express";
+import { IRequest } from "../types/request.types";
+import { UnAuthorizedException } from "../utils/response/error.response";
+import { verifyToken } from "../utils/security/token.security";
+import { Response, NextFunction } from "express";
 
 export const authMiddleware = async (
   req: IRequest,
@@ -12,15 +12,21 @@ export const authMiddleware = async (
     const accessToken = req.cookies?.access_token;
 
     if (!accessToken) {
-      return res.status(401).json({
-        message: "Unauthorized - Access token missing",
-      });
+      throw new UnAuthorizedException(
+        "Unauthorized - Access token missing"
+      );
     }
 
-    req.credentials =await verifyToken(accessToken);
+    req.credentials = await verifyToken(accessToken);
 
     next();
   } catch (error) {
-    throw new ForbiddenException("Unauthorized - Invalid or expired token");
+    if (error instanceof UnAuthorizedException) {
+      throw error;
+    }
+
+    throw new UnAuthorizedException(
+      "Unauthorized - Invalid or expired token"
+    );
   }
 };

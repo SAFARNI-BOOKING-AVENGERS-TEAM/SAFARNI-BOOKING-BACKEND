@@ -1,3 +1,5 @@
+import { Request, Response, NextFunction } from "express";
+
 export class ApplicationException extends Error {
   statusCode: number;
   cause?: any;
@@ -7,6 +9,7 @@ export class ApplicationException extends Error {
     this.name = this.constructor.name;
     this.statusCode = statusCode;
     this.cause = cause;
+
     Error.captureStackTrace(this, this.constructor);
   }
 }
@@ -19,7 +22,7 @@ export class BadRequestException extends ApplicationException {
 
 export class ValidationException extends ApplicationException {
   constructor(message: string, cause?: any) {
-    super(message, 402, cause);
+    super(message, 400, cause);
   }
 }
 
@@ -38,30 +41,27 @@ export class NotFoundException extends ApplicationException {
 export class InvalidTokenException extends ApplicationException {
   constructor(
     message: string = "The token is invalid or has expired",
-    statusCode: number = 401,
     cause?: any
   ) {
-    super(message, statusCode, cause);
+    super(message, 401, cause);
   }
 }
 
 export class UnAuthorizedException extends ApplicationException {
   constructor(
     message: string = "You are not authorized. Please login to continue.",
-    statusCode: number = 401,
     cause?: any
   ) {
-    super(message, statusCode, cause);
+    super(message, 401, cause);
   }
 }
 
 export class ForbiddenException extends ApplicationException {
   constructor(
     message: string = "You don't have permission to perform this action",
-    statusCode: number = 403,
     cause?: any
   ) {
-    super(message, statusCode, cause);
+    super(message, 403, cause);
   }
 }
 
@@ -75,17 +75,26 @@ export class TooManyRequestsException extends ApplicationException {
 }
 
 export const globalErrorHandler = (
-  error: ApplicationException,
-  req: any,
-  res: any,
-  next: any
+  error: any,
+  req: Request,
+  res: Response,
+  next: NextFunction
 ) => {
-  res.status(error.statusCode || 500).json({
-    error_message: error.message || "Something Went Wrong",
-    name: error.name,
-    statusCode: error.statusCode || 500,
-    cause: error.cause,
-    error_stack:
-      process.env.NODE_ENV === "development" ? error.stack : undefined,
+  const statusCode = error.statusCode || 500;
+
+  return res.status(statusCode).json({
+    success: false,
+    message: error.message || "Internal Server Error",
+    statusCode,
+
+    cause:
+      process.env.NODE_ENV === "development"
+        ? error.cause
+        : undefined,
+
+    stack:
+      process.env.NODE_ENV === "development"
+        ? error.stack
+        : undefined,
   });
 };

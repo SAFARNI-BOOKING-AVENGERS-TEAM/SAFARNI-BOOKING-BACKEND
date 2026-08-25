@@ -6,7 +6,7 @@ export interface ICar {
   year?: number;
   type: "SUV" | "Sedan" | "Hatchback" | "Convertible" | "Luxury";
   transmission: "Automatic" | "Manual";
- 
+  fuelType: "Petrol" | "Diesel" | "Electric" | "Hybrid";
   seats: number;
   pricePerDay: number;
   available: boolean;
@@ -19,6 +19,7 @@ export interface ICar {
   updatedBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
+  status: "pending" | "approved" | "rejected";
 }
 
 const CarSchema = new Schema<ICar>(
@@ -36,7 +37,11 @@ const CarSchema = new Schema<ICar>(
       enum: ["Automatic", "Manual"],
       required: [true, "Transmission type is required"],
     },
-    
+    fuelType: {
+      type: String,
+      enum: ["Petrol", "Diesel", "Electric", "Hybrid"],
+      required: [true, "Fuel type is required"],
+    },
     seats: { type: Number, required: [true, "Seats count is required"] },
     pricePerDay: { type: Number, required: [true, "Price per day is required"] },
     available: { type: Boolean, default: true },
@@ -47,6 +52,11 @@ const CarSchema = new Schema<ICar>(
     image: { type: String },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
   },
   { timestamps: true }
 );

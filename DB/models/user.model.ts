@@ -4,11 +4,14 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
-  role: "user" | "service_provider" | "admin";
-  service?: "flights" | "cars" | "hotels";
   isVerified: boolean;
+  role: "user" | "provider" | "admin";
+  providerType?: "travel" | "telecom" | "both";
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  refreshTokenVersion: number;
   profilePicture?: {
     url: string;
     publicId: string;
@@ -43,19 +46,21 @@ const userSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ["user", "service_provider", "admin"],
+      enum: ["user", "provider", "admin"],
       default: "user",
-      required: [true, "User role is required"]
     },
-    service:{
+    providerType: {
       type: String,
-      enum: [ "flights", "cars", "hotels"],
-      required: function() {
-        return this.role === "service_provider";
-      },
+      enum: ["travel", "telecom", "both"],
     },
     passwordResetToken: String,
     passwordResetExpires: Date,
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    refreshTokenVersion: {
+      type: Number,
+      default: 0,
+    },
     profilePicture: {
       url: String,
       publicId: String,
