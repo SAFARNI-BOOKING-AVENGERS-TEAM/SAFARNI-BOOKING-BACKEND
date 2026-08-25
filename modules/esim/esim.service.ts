@@ -7,6 +7,7 @@ import {
   ForbiddenException,
 } from "../../utils/response/error.response";
 import { sendNotification } from "../../utils/notifications/sendNotification";
+import { withLock } from "../../utils/concurrency/lock";
 import { getESIMProvider } from "./providers/esim.provider.factory";
 
 export const createESIMPlan = async (payload: any, userId: string, userRole: string) => {
@@ -75,7 +76,6 @@ export const updateESIMPlan = async (planId: string, payload: any, userId: strin
 
   Object.assign(plan, payload);
   plan.updatedBy = userId as any;
-  // Any provider edit must be reviewed again before the changed plan is public.
   if (userRole !== "admin") plan.status = "pending";
   await plan.save();
   return plan;
@@ -88,11 +88,10 @@ export const deleteESIMPlan = async (planId: string, userId: string, userRole: s
     throw new ForbiddenException("You can only delete eSIM plans you own");
   }
 
-  const activeOrder = await ESIMOrderModel.findOne({
-    planId,
-    status: { $in: ["pending", "processing", "completed"] },
-  });
-  if (activeOrder) {
+  // Failed paid orders must remain retryable, so a plan with any non-cancelled
+  // order stays immutable/deletable only after its order history is resolved.
+  const existingOrder = await ESIMOrderModel.findOne({ planId, status: { $ne: "cancelled" } });
+  if (existingOrder) {
     throw new BadRequestException("Cannot delete this eSIM plan because it has existing orders");
   }
 
@@ -124,7 +123,6 @@ export const updateESIMPlanStatus = async (
   return plan;
 };
 
-// Creates a payable order only. Provisioning begins only after Stripe success.
 export const purchaseESIM = async (userId: string, planId: string, packageBookingId?: string) => {
   const plan = await ESIMPlanModel.findById(planId);
   if (!plan) throw new NotFoundException("eSIM plan not found");
@@ -135,6 +133,14 @@ export const purchaseESIM = async (userId: string, planId: string, packageBookin
   const order = await ESIMOrderModel.create({
     userId,
     planId,
+    planSnapshot: {
+      name: plan.name,
+      country: plan.country,
+      region: plan.region,
+      dataAmount: plan.dataAmount,
+      dataUnit: plan.dataUnit,
+      validityDays: plan.validityDays,
+    },
     status: "pending",
     price: plan.price,
     currency: plan.currency,
@@ -144,42 +150,44 @@ export const purchaseESIM = async (userId: string, planId: string, packageBookin
   return { ...order.toObject(), paymentStatus: "unpaid" as const };
 };
 
-// Payment layer only. Idempotent to tolerate webhook/session verification retries.
 export const fulfillPaidESIMOrder = async (orderId: string) => {
-  const order = await ESIMOrderModel.findById(orderId);
-  if (!order) throw new NotFoundException("eSIM order not found");
-  if (order.status === "completed" && order.profile) return order;
-  if (order.status === "cancelled") throw new BadRequestException("Cancelled eSIM orders cannot be provisioned");
+  return await withLock(`esim-fulfill:${orderId}`, async () => {
+    const order = await ESIMOrderModel.findById(orderId);
+    if (!order) throw new NotFoundException("eSIM order not found");
+    if (order.status === "completed" && order.profile) return order;
+    if (order.status === "cancelled") throw new BadRequestException("Cancelled eSIM orders cannot be provisioned");
 
-  const plan = await ESIMPlanModel.findById(order.planId);
-  if (!plan) throw new NotFoundException("eSIM plan not found");
+    const plan = await ESIMPlanModel.findById(order.planId);
+    if (!plan) throw new NotFoundException("eSIM plan not found");
 
-  try {
-    order.status = "processing";
-    await order.save();
+    try {
+      order.status = "processing";
+      await order.save();
 
-    const provider = getESIMProvider();
-    const profile = await provider.provisionESIM(plan._id.toString());
-    const expiresAt = new Date(Date.now() + plan.validityDays * 24 * 60 * 60 * 1000);
+      const provider = getESIMProvider();
+      const profile = await provider.provisionESIM(plan._id.toString());
+      const validityDays = order.planSnapshot?.validityDays || plan.validityDays;
+      const expiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
 
-    order.profile = { ...profile, expiresAt };
-    order.status = "completed";
-    await order.save();
+      order.profile = { ...profile, expiresAt };
+      order.status = "completed";
+      await order.save();
 
-    await sendNotification(order.userId.toString(), {
-      title: "eSIM Ready",
-      message: `Your eSIM for "${plan.name}" has been paid, provisioned, and is ready to activate.`,
-      type: "booking_status_changed",
-      relatedId: order._id.toString(),
-    });
+      await sendNotification(order.userId.toString(), {
+        title: "eSIM Ready",
+        message: `Your eSIM for "${order.planSnapshot?.name || plan.name}" has been paid, provisioned, and is ready to activate.`,
+        type: "booking_status_changed",
+        relatedId: order._id.toString(),
+      });
 
-    return order;
-  } catch (error) {
-    order.status = "failed";
-    await order.save();
-    console.error(`[esim] Provisioning failed for paid order ${orderId}:`, error);
-    throw new BadRequestException("Payment succeeded, but eSIM provisioning failed. Please retry provisioning.");
-  }
+      return order;
+    } catch (error) {
+      order.status = "failed";
+      await order.save();
+      console.error(`[esim] Provisioning failed for paid order ${orderId}:`, error);
+      throw new BadRequestException("Payment succeeded, but eSIM provisioning failed. Please retry provisioning.");
+    }
+  });
 };
 
 const latestPaymentStatusByOrder = async (userId: string, orderIds: string[]) => {
