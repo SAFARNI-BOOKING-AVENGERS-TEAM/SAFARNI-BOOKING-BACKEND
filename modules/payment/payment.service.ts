@@ -17,40 +17,27 @@ export const createPaymentIntent = async (userId: string, input: CreateIntentInp
 
   if (input.bookingId) {
     const booking = await BookingModel.findById(input.bookingId);
-    if (!booking) {
-      throw new NotFoundException("Booking not found");
-    }
-    if (booking.userId.toString() !== userId.toString()) {
-      throw new ForbiddenException("You are not authorized to pay for this booking");
-    }
-    if (booking.status === "cancelled") {
-      throw new BadRequestException("Cannot pay for a cancelled booking");
-    }
+    if (!booking) throw new NotFoundException("Booking not found");
+    if (booking.userId.toString() !== userId.toString()) throw new ForbiddenException("You are not authorized to pay for this booking");
+    if (booking.status === "cancelled") throw new BadRequestException("Cannot pay for a cancelled booking");
     amount = booking.totalPrice;
     bookingIds = [booking._id.toString()];
   } else if (input.packageBookingId) {
     const bookings = await BookingModel.find({ packageBookingId: input.packageBookingId });
-    if (bookings.length === 0) {
-      throw new NotFoundException("No bookings found for this package booking");
-    }
-    if (bookings.some((b) => b.userId.toString() !== userId.toString())) {
-      throw new ForbiddenException("You are not authorized to pay for this package booking");
-    }
-    if (bookings.some((b) => b.status === "cancelled")) {
-      throw new BadRequestException("Cannot pay for a package that includes a cancelled booking");
-    }
+    if (bookings.length === 0) throw new NotFoundException("No bookings found for this package booking");
+    if (bookings.some((b) => b.userId.toString() !== userId.toString())) throw new ForbiddenException("You are not authorized to pay for this package booking");
+    if (bookings.some((b) => b.status === "cancelled")) throw new BadRequestException("Cannot pay for a package that includes a cancelled booking");
     amount = bookings.reduce((sum, b) => sum + b.totalPrice, 0);
     bookingIds = bookings.map((b) => b._id.toString());
   }
 
-  // Prevent creating a second payment for something already paid
+  if (amount <= 0) throw new BadRequestException("Invalid payment amount");
+
   const existingPayment = await PaymentModel.findOne({
     ...(input.bookingId ? { bookingId: input.bookingId } : { packageBookingId: input.packageBookingId }),
     status: "succeeded",
   });
-  if (existingPayment) {
-    throw new BadRequestException("This has already been paid for");
-  }
+  if (existingPayment) throw new BadRequestException("This has already been paid for");
 
   const paymentIntent = await stripeClient.paymentIntents.create({
     amount: toCents(amount),
@@ -73,38 +60,36 @@ export const createPaymentIntent = async (userId: string, input: CreateIntentInp
     status: "pending",
   });
 
-  return {
-    clientSecret: paymentIntent.client_secret,
-    amount,
-    currency: "usd",
-    bookingsIncluded: bookingIds.length,
-  };
+  return { clientSecret: paymentIntent.client_secret, amount, currency: "usd", bookingsIncluded: bookingIds.length };
 };
 
-// Shared by both the manual /payments/confirm endpoint AND the Stripe webhook —
-// single source of truth for "what happens when a payment actually succeeds".
 export const finalizePayment = async (stripePaymentIntentId: string) => {
   const payment = await PaymentModel.findOne({ stripePaymentIntentId });
-  if (!payment || payment.status === "succeeded") {
-    return payment; // already handled, or unknown intent — nothing to do
-  }
+  if (!payment) return null;
 
-  payment.status = "succeeded";
-  await payment.save();
+  const wasAlreadySucceeded = payment.status === "succeeded";
+  if (!wasAlreadySucceeded) {
+    payment.status = "succeeded";
+    await payment.save();
+  }
 
   const query = payment.bookingId
     ? { _id: payment.bookingId }
     : { packageBookingId: payment.packageBookingId };
 
   const bookings = await BookingModel.find(query);
+  let repairedBookingState = false;
   for (const booking of bookings) {
     if (booking.status !== "confirmed") {
       booking.status = "confirmed";
       await booking.save();
+      repairedBookingState = true;
     }
   }
 
-  if (bookings.length > 0) {
+  // Send the success notification on the first successful finalization only.
+  // Retries are still allowed to repair booking state without duplicating messages.
+  if (!wasAlreadySucceeded && bookings.length > 0) {
     await sendNotification(payment.userId.toString(), {
       title: "Payment Successful",
       message: payment.packageBookingId
@@ -115,47 +100,35 @@ export const finalizePayment = async (stripePaymentIntentId: string) => {
     });
   }
 
+  if (wasAlreadySucceeded && repairedBookingState) {
+    console.warn(`[payment] Repaired booking state for already-succeeded intent ${stripePaymentIntentId}`);
+  }
+
   return payment;
 };
 
 export const confirmPayment = async (userId: string, paymentIntentId: string) => {
   const payment = await PaymentModel.findOne({ stripePaymentIntentId: paymentIntentId });
-  if (!payment) {
-    throw new NotFoundException("Payment record not found");
-  }
-  if (payment.userId.toString() !== userId.toString()) {
-    throw new ForbiddenException("You are not authorized to confirm this payment");
-  }
+  if (!payment) throw new NotFoundException("Payment record not found");
+  if (payment.userId.toString() !== userId.toString()) throw new ForbiddenException("You are not authorized to confirm this payment");
 
-  // Never trust the client's word — verify directly against Stripe
   const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
   if (intent.status !== "succeeded") {
-    throw new BadRequestException(
-      `Payment has not succeeded yet (current status: ${intent.status})`
-    );
+    throw new BadRequestException(`Payment has not succeeded yet (current status: ${intent.status})`);
   }
 
   return await finalizePayment(paymentIntentId);
 };
-// Called when a booking is cancelled. Finds the payment that covered this
-// booking (whether standalone or part of a package) and refunds just this
-// booking's share via Stripe — not the whole payment if it covered more.
+
 export const refundBookingPayment = async (bookingId: string, packageBookingId: string | undefined, amount: number) => {
   const payment = await PaymentModel.findOne({
     status: "succeeded",
     ...(packageBookingId ? { packageBookingId } : { bookingId }),
   });
 
-  if (!payment) {
-    // Nothing was ever paid for this booking — nothing to refund
-    return null;
-  }
-
-  // Guard against refunding the same booking twice
+  if (!payment) return null;
   const alreadyRefunded = payment.refunds.some((r) => r.bookingId === bookingId);
-  if (alreadyRefunded) {
-    return null;
-  }
+  if (alreadyRefunded) return null;
 
   const refund = await stripeClient.refunds.create({
     payment_intent: payment.stripePaymentIntentId,
@@ -169,6 +142,5 @@ export const refundBookingPayment = async (bookingId: string, packageBookingId: 
     createdAt: new Date(),
   });
   await payment.save();
-
   return refund;
 };
