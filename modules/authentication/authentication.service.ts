@@ -17,7 +17,6 @@ import { successResponse } from "../../utils/response/success.response";
 import { Types } from "mongoose";
 
 const genericResetMessage = "If an account exists for that email, a reset link has been sent.";
-
 const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 
 const sendVerificationEmail = async (email: string, token: string) => {
@@ -57,7 +56,7 @@ export const resetPasswordRequest = async (req: Request, res: Response) => {
 };
 
 export const resetPasswordConfirm = async (req: Request, res: Response) => {
-  const { token } = req.params;
+  const token = String(req.params.token);
   const { password } = req.body;
 
   const user = await UserModel.findOne({
@@ -176,8 +175,9 @@ export const logout = async (req: Request, res: Response) => {
 };
 
 export const verifyEmail = async (req: Request, res: Response) => {
+  const token = String(req.params.token);
   const user = await UserModel.findOne({
-    emailVerificationToken: hashToken(req.params.token),
+    emailVerificationToken: hashToken(token),
     emailVerificationExpires: { $gt: new Date() },
   });
   if (!user) throw new BadRequestException("Verification link is invalid or has expired");
@@ -202,12 +202,7 @@ export const addServiceProvider = async (req: Request, res: Response) => {
     isVerified: true,
   });
 
-  return successResponse({
-    res,
-    statusCode: 201,
-    message: "Service provider added successfully",
-    data: createdUser,
-  });
+  return successResponse({ res, statusCode: 201, message: "Service provider added successfully", data: createdUser });
 };
 
 export const getServiceProviders = async (req: Request, res: Response) => {
