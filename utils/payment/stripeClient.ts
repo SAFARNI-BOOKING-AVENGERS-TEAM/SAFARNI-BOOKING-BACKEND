@@ -21,3 +21,48 @@ export const getStripeClient = (): Stripe => {
 };
 
 export const isStripeConfigured = () => Boolean(stripeClient);
+
+export const getStripeDiagnostics = async () => {
+  const configured = Boolean(stripeClient && secretKey);
+  const mode = !secretKey
+    ? "not_configured"
+    : secretKey.startsWith("sk_test_")
+      ? "test"
+      : secretKey.startsWith("sk_live_")
+        ? "live"
+        : "unknown";
+  const webhookConfigured = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+
+  if (!stripeClient) {
+    return {
+      configured: false,
+      reachable: false,
+      mode,
+      webhookConfigured,
+      message: "STRIPE_SECRET_KEY is not configured",
+    };
+  }
+
+  try {
+    // This is a read-only API call that validates the configured secret key
+    // without creating or modifying Stripe objects.
+    await stripeClient.balance.retrieve();
+    return {
+      configured,
+      reachable: true,
+      mode,
+      webhookConfigured,
+      message: webhookConfigured
+        ? "Stripe credentials are valid and the webhook secret is configured"
+        : "Stripe credentials are valid, but STRIPE_WEBHOOK_SECRET is missing",
+    };
+  } catch {
+    return {
+      configured,
+      reachable: false,
+      mode,
+      webhookConfigured,
+      message: "Stripe rejected the configured credentials or could not be reached",
+    };
+  }
+};
