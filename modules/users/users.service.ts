@@ -7,10 +7,42 @@ import {
   NotFoundException,
 } from "../../utils/response/error.response";
 
+const toPublicProfilePicture = (
+  req: Request,
+  profilePicture?: { url?: string; publicId?: string }
+) => {
+  if (!profilePicture?.url) return profilePicture;
+
+  // Cloudinary (and any other absolute remote URL) is already browser-safe.
+  if (/^https?:\/\//i.test(profilePicture.url)) return profilePicture;
+
+  // Older/local development uploads may have been stored as a filesystem path
+  // such as "uploads\\image-123.jpg". Convert that into the public Express URL.
+  const normalizedPath = profilePicture.url.replace(/\\/g, "/");
+  const filename = profilePicture.publicId || normalizedPath.split("/").pop();
+  if (!filename) return profilePicture;
+
+  return {
+    ...profilePicture,
+    url: `${req.protocol}://${req.get("host")}/uploads/${encodeURIComponent(filename)}`,
+  };
+};
+
 export const myProfile = async (req: IRequest, res: Response) => {
+  const user = req.credentials?.user;
+
+  if (!user) {
+    throw new BadRequestException("Unauthorized access");
+  }
+
+  const data = user.toJSON ? user.toJSON() : user;
+
   return successResponse({
     res,
-    data: req.credentials?.user,
+    data: {
+      ...data,
+      profilePicture: toPublicProfilePicture(req, user.profilePicture),
+    },
   });
 };
 
@@ -36,8 +68,14 @@ export const updateProfilePicture = async (
     throw new NotFoundException("User not found");
   }
 
-  user.profilePicture = {
+  const storedProfilePicture = {
     url: file.path,
+    publicId: file.filename,
+  };
+  const publicProfilePicture = toPublicProfilePicture(req, storedProfilePicture);
+
+  user.profilePicture = {
+    url: publicProfilePicture?.url || file.path,
     publicId: file.filename,
   };
 
@@ -109,7 +147,7 @@ export const updateProfileInfo = async (
         name: user.name,
         email: user.email,
         isVerified: user.isVerified,
-        profilePicture: user.profilePicture,
+        profilePicture: toPublicProfilePicture(req, user.profilePicture),
       },
     },
   });
