@@ -25,7 +25,7 @@ const router = Router();
 // Rate limiter specific to authentication routes (brute-force protection)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: process.env.NODE_ENV === "production" ? 10 : 100,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {

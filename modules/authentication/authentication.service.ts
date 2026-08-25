@@ -6,6 +6,7 @@ import UserModel from "../../DB/models/user.model";
 import { createRandomToken } from "../../utils/security/jwtToken.security";
 import { sendEmail } from "../../utils/response/email/sendEmail.email";
 import { getResetPasswordTemplate } from "../../utils/response/email/resetPassword.template";
+import { getVerifyEmailTemplate } from "../../utils/response/email/verifyEmail.template";
 import {
   BadRequestException,
   NotFoundException,
@@ -100,7 +101,7 @@ export const registerUser = async (req: Request, res: Response) => {
   const userExists = await UserModel.findOne({ email });
   if (userExists) throw new BadRequestException("Email already registered");
 
-const hashedPassword = await hashString(password);
+  const hashedPassword = await hashString(password);
 
   const verificationToken = createRandomToken();
   const hashedVerificationToken = crypto
@@ -117,12 +118,33 @@ const hashedPassword = await hashString(password);
   });
 
   const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+  const template: EmailTemplate = getVerifyEmailTemplate(verifyUrl);
 
-  console.log("\n==================================================");
-  console.log("SMTP email sending skipped (dev mode).");
-  console.log(`Verify Email URL/Token: ${verifyUrl}`);
-  console.log(`Raw Token (for Postman testing): ${verificationToken}`);
-  console.log("==================================================\n");
+  // Mirrors resetPasswordRequest's pattern exactly: try to actually send
+  // it, and only fall back to a console-logged link if EMAIL_HOST isn't
+  // configured. If EMAIL_HOST *is* set and sending still fails (bad
+  // credentials, etc.), that's a real misconfiguration and should surface
+  // as an error rather than be silently swallowed.
+  let devFallbackMessage: string | undefined;
+
+  try {
+    await sendEmail({
+      email: createdUser.email,
+      ...template,
+    });
+  } catch (error) {
+    console.log("\n==================================================");
+    console.error("Email send error:", error);
+    console.log("SMTP email sending skipped or failed.");
+    console.log(`Verify Email URL: ${verifyUrl}`);
+    console.log("==================================================\n");
+
+    if (!process.env.EMAIL_HOST) {
+      devFallbackMessage = `Verification link generated (printed to server console): ${verifyUrl}`;
+    } else {
+      throw error;
+    }
+  }
 
   // Remove password from response for security
   const userResponse = {
@@ -136,7 +158,9 @@ const hashedPassword = await hashString(password);
   return successResponse({
     res,
     statusCode: 201,
-    message: "User registered successfully. Please check your email to verify your account.",
+    message:
+      devFallbackMessage ??
+      "User registered successfully. Please check your email to verify your account.",
     data: userResponse,
   });
 };
