@@ -15,16 +15,20 @@ export const createESIMPlan = async (payload: any, userId: string, userRole: str
 };
 
 export const getESIMPlans = async (queryParam: any = {}, userRole?: string, userId?: string) => {
-  const { country, region, page, limit } = queryParam;
+  const { country, region, page, limit, mine } = queryParam;
   const query: any = {};
 
   if (userRole === "admin") {
     // Admin sees all plans.
   } else if (userRole === "provider" && userId) {
-    query.$or = [
-      { status: "approved" },
-      { createdBy: userId, status: { $in: ["pending", "rejected"] } },
-    ];
+    if (String(mine) === "true") {
+      query.createdBy = userId;
+    } else {
+      query.$or = [
+        { status: "approved" },
+        { createdBy: userId, status: { $in: ["pending", "rejected"] } },
+      ];
+    }
   } else {
     query.status = "approved";
   }
@@ -37,7 +41,7 @@ export const getESIMPlans = async (queryParam: any = {}, userRole?: string, user
   const skip = (currentPage - 1) * pageSize;
 
   const [data, total] = await Promise.all([
-    ESIMPlanModel.find(query).sort({ price: 1 }).skip(skip).limit(pageSize),
+    ESIMPlanModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
     ESIMPlanModel.countDocuments(query),
   ]);
 
@@ -68,8 +72,11 @@ export const updateESIMPlan = async (planId: string, payload: any, userId: strin
     delete payload.createdBy;
     delete payload.updatedBy;
   }
+
   Object.assign(plan, payload);
   plan.updatedBy = userId as any;
+  // Any provider edit must be reviewed again before the changed plan is public.
+  if (userRole !== "admin") plan.status = "pending";
   await plan.save();
   return plan;
 };
