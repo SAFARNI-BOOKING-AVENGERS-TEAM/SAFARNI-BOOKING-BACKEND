@@ -1,24 +1,75 @@
 import multer from "multer";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "../utils/cloudinary/cloudinary";
 import fs from "fs";
 import path from "path";
+import type { Request } from "express";
 
 const allowedMimeTypes = new Set(["image/jpeg", "image/png"]);
 const maxFileSize = 5 * 1024 * 1024;
 
-let storage: any;
+const hasCloudinaryConfig = Boolean(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+);
 
-if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
-  storage = new CloudinaryStorage({
-    cloudinary,
-    params: {
-      folder: "hotels",
-      allowed_formats: ["jpg", "jpeg", "png"],
-    } as any,
-  });
+class CloudinaryMulterStorage implements multer.StorageEngine {
+  _handleFile(
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error?: any, info?: Partial<Express.Multer.File>) => void
+  ) {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "safarni",
+        resource_type: "image",
+        allowed_formats: ["jpg", "jpeg", "png"],
+      },
+      (error, result) => {
+        if (error || !result) {
+          return cb(error || new Error("Cloudinary upload failed"));
+        }
+
+        cb(null, {
+          path: result.secure_url,
+          filename: result.public_id,
+          size: result.bytes,
+        });
+      }
+    );
+
+    file.stream.on("error", cb);
+    file.stream.pipe(uploadStream);
+  }
+
+  _removeFile(
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null) => void
+  ) {
+    const publicId = file.filename;
+
+    if (!publicId) {
+      cb(null);
+      return;
+    }
+
+    cloudinary.uploader
+      .destroy(publicId)
+      .then(() => cb(null))
+      .catch((error) => cb(error instanceof Error ? error : new Error(String(error))));
+  }
+}
+
+let storage: multer.StorageEngine;
+
+if (hasCloudinaryConfig) {
+  storage = new CloudinaryMulterStorage();
 } else {
-  if (!fs.existsSync("./uploads")) fs.mkdirSync("./uploads");
+  if (!fs.existsSync("./uploads")) {
+    fs.mkdirSync("./uploads", { recursive: true });
+  }
+
   storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, "./uploads"),
     filename: (_req, file, cb) => {
@@ -41,6 +92,7 @@ export const upload = multer({
     if (!allowedMimeTypes.has(file.mimetype)) {
       return cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname));
     }
+
     cb(null, true);
   },
 });
