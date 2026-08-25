@@ -150,7 +150,7 @@ export const createPaymentIntent = async (userId: string, input: PaymentTargetIn
   await ensurePayable(target.targetFilter);
 
   const existingPending = await PaymentModel.findOne({ ...target.targetFilter, status: "pending", stripePaymentIntentId: { $exists: true } }).sort({ createdAt: -1 });
-  if (existingPending?.stripePaymentIntentId) {
+  if (existingPending?.stripePaymentIntentId && existingPending.stripePaymentIntentId.startsWith("pi_")) {
     try {
       const existingIntent = await stripeClient.paymentIntents.retrieve(existingPending.stripePaymentIntentId);
       if (!["canceled", "succeeded"].includes(existingIntent.status) && existingIntent.client_secret) {
@@ -247,6 +247,12 @@ export const createCheckoutSession = async (userId: string, input: PaymentTarget
   payment.amount = target.amount;
   payment.currency = target.currency;
   payment.stripeCheckoutSessionId = session.id;
+  // Old local databases may still have the previous non-sparse unique index on
+  // stripePaymentIntentId. Keep this field unique/non-null until Stripe assigns
+  // the real pi_ identifier, then replace it in finalizeCheckoutSession().
+  if (!payment.stripePaymentIntentId || !payment.stripePaymentIntentId.startsWith("pi_")) {
+    payment.stripePaymentIntentId = `checkout:${session.id}`;
+  }
   payment.status = "pending";
   await payment.save();
 
@@ -359,7 +365,7 @@ export const refundBookingPayment = async (bookingId: string, packageBookingId: 
     ...(packageBookingId ? { packageBookingId } : { bookingId }),
   });
 
-  if (!payment?.stripePaymentIntentId) return null;
+  if (!payment?.stripePaymentIntentId || !payment.stripePaymentIntentId.startsWith("pi_")) return null;
   const alreadyRefunded = payment.refunds.some((refund: any) => refund.bookingId === bookingId);
   if (alreadyRefunded) return null;
 
