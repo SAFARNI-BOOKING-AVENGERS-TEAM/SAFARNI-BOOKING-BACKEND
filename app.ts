@@ -11,6 +11,7 @@ import webhookRouter from "./modules/payment/payment.webhook";
 import { notFound } from "./middleware/notFound.middleware";
 import { auditLogMiddleware } from "./middleware/auditLog.middleware";
 import { globalErrorHandler } from "./utils/response/error.response";
+import { uploadsDir } from "./utils/uploads/uploadPath";
 
 const app = express();
 
@@ -44,10 +45,9 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(express.static("public"));
-// When Cloudinary is not configured, Multer stores development uploads here.
-// Expose only this dedicated upload directory so returned image URLs are
-// browser-accessible without exposing the rest of the project filesystem.
-app.use("/uploads", express.static("uploads"));
+// When Cloudinary is not configured, Multer stores development uploads in
+// uploadsDir. Serve that exact same absolute directory at /uploads.
+app.use("/uploads", express.static(uploadsDir));
 app.use(globalLimiter);
 app.use(auditLogMiddleware);
 
