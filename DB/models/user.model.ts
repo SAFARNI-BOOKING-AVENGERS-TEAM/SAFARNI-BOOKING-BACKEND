@@ -5,12 +5,13 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
-  role: "user" | "service_provider" | "admin";
-  service?: "flights" | "cars" | "hotels";
   isVerified: boolean;
  
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  refreshTokenVersion: number;
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
   refreshTokenVersion: number;
@@ -53,10 +54,17 @@ const userSchema = new Schema<IUser>(
     role: {
       type: String,
       enum: ["user", "provider", "admin"],
+      enum: ["user", "provider", "admin"],
       default: "user",
     },
     passwordResetToken: String,
     passwordResetExpires: Date,
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    refreshTokenVersion: {
+      type: Number,
+      default: 0,
+    },
     emailVerificationToken: String,
     emailVerificationExpires: Date,
     refreshTokenVersion: {

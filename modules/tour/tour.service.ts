@@ -400,3 +400,102 @@ export const updateTourStatus = async (
 
   return tour;
 };
+<<<<<<< HEAD
+=======
+export const addOrUpdateReview = async (
+  tourId: string,
+  userId: string,
+  rating: number,
+  comment?: string
+) => {
+  const tour = await Tour.findById(tourId);
+  if (!tour) {
+    throw new NotFoundException("Tour not found");
+  }
+  // Prevent users from reviewing their own tours
+if (tour.createdBy.toString() === userId.toString()) {
+    throw new ForbiddenException(
+      "You cannot review your own tour"
+    );
+  }
+  // Only someone with a confirmed booking on this tour can review it
+  const hasConfirmedBooking = await BookingModel.findOne({
+    userId,
+    category: "tours",
+    itemId: tourId,
+    status: "confirmed",
+  });
+
+  if (!hasConfirmedBooking) {
+    throw new ForbiddenException(
+      "You can only review a tour after your booking for it has been confirmed"
+    );
+  }
+
+  const existingReview = tour.reviews.find(
+    (r) => r.userId.toString() === userId.toString()
+  );
+
+  if (existingReview) {
+    existingReview.rating = rating;
+    existingReview.comment = comment;
+  } else {
+    tour.reviews.push({ userId: userId as any, rating, comment } as any);
+  }
+
+  await tour.save();
+  return tour.reviews;
+};
+// GET TOUR REVIEWS
+export const getTourReviews = async (tourId: string) => {
+  const tour = await Tour.findById(tourId).populate(
+    "reviews.userId",
+    "name"
+  );
+  if (!tour) {
+    throw new NotFoundException("Tour not found");
+  }
+
+  const averageRating =
+    tour.reviews.length > 0
+      ? tour.reviews.reduce((sum, r) => sum + r.rating, 0) / tour.reviews.length
+      : 0;
+
+  return {
+    reviews: tour.reviews,
+    averageRating: Math.round(averageRating * 10) / 10,
+    totalReviews: tour.reviews.length,
+  };
+};
+
+export const deleteReview = async (
+  tourId: string,
+  reviewUserId: string,
+  requesterId: string,
+  requesterRole: string
+) => {
+  const tour = await Tour.findById(tourId);
+  if (!tour) {
+    throw new NotFoundException("Tour not found");
+  }
+
+  const reviewIndex = tour.reviews.findIndex(
+    (r) => r.userId.toString() === reviewUserId.toString()
+  );
+
+  if (reviewIndex === -1) {
+    throw new NotFoundException("Review not found");
+  }
+
+  if (
+    requesterRole !== "admin" &&
+    tour.reviews[reviewIndex].userId.toString() !== requesterId.toString()
+  ) {
+    throw new ForbiddenException("You can only delete your own review");
+  }
+
+  tour.reviews.splice(reviewIndex, 1);
+  await tour.save();
+  return tour.reviews;
+};
+>>>>>>> origin/main

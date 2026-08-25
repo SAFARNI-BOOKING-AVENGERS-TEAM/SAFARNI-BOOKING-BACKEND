@@ -5,6 +5,7 @@ import RoomModel from "../../DB/models/room.model";
 import TourModel from "../../DB/models/tour.model";
 import CarModel from "../../DB/models/car.model";
 import FlightModel from "../../DB/models/flight.model";
+import { withLock } from "../../utils/concurrency/lock";
 import { sendNotification } from "../../utils/notifications/sendNotification";
 import {
   BadRequestException,
@@ -12,21 +13,33 @@ import {
   UnAuthorizedException,
   ForbiddenException,
 } from "../../utils/response/error.response";
+import { refundBookingPayment } from "../payment/payment.service";
 import { successResponse } from "../../utils/response/success.response";
 
-export const createBooking = async (req: Request, res: Response) => {
-  const userId = (req as any).credentials?.user?._id;
-  if (!userId) {
-    throw new UnAuthorizedException("Authentication credentials not found");
-  }
-
-  const { category, itemId, startDate, endDate, details } = req.body;
-
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-
+// INTERNAL: books a single item (used directly by createBooking,
+// and 4x in a row by createPackageBooking). Throws on any failure —
+// the caller decides what to do (reject the whole request, or roll back).
+interface SingleBookingInput {
+  userId: string;
+  category: "hotels" | "tours" | "flights" | "cars";
+  itemId: string;
+  startDate: Date;
+  endDate: Date;
+  details?: any;
+  discountMultiplier?: number; // e.g. 0.85 for a 15% package discount
+  packageBookingId?: string;
+}
+export const createSingleBooking = async ({
+  userId,
+  category,
+  itemId,
+  startDate: start,
+  endDate: end,
+  details,
+  discountMultiplier = 1,
+  packageBookingId,
+}: SingleBookingInput) => {
   // Prevent a user from booking overlapping Car and Flight reservations
-  // (mutually exclusive: can't be driving and flying at the same time)
   if (category === "cars" || category === "flights") {
     const conflictingBooking = await BookingModel.findOne({
       userId,
@@ -43,125 +56,135 @@ export const createBooking = async (req: Request, res: Response) => {
     }
   }
 
-  let totalPrice = 0;
   const quantity = Number(details?.guests || details?.quantity || 1);
 
-  if (category === "hotels") {
-    // itemId is Room ID
-    const room = await RoomModel.findById(itemId);
-    if (!room) {
-      throw new NotFoundException("Room not found");
-    }
+  // Everything that reads-then-writes the same resource (availability check +
+  // seat/capacity decrement) happens inside a lock scoped to this exact item,
+  // so two simultaneous requests for the same room/car/flight/tour can't both
+  // pass the availability check before either one commits.
+  const { totalPrice, ownerId } = await withLock(`booking:${category}:${itemId}`, async () => {
+    let price = 0;
+    let owner: string | null = null;
 
-    // Check for overlapping active bookings on the same room
-    const overlappingBooking = await BookingModel.findOne({
-      category: "hotels",
-      itemId,
-      status: { $ne: "cancelled" },
-      startDate: { $lt: end },
-      endDate: { $gt: start },
-    });
+    if (category === "hotels") {
+      const room = await RoomModel.findById(itemId);
+      if (!room) {
+        throw new NotFoundException("Room not found");
+      }
 
-    if (overlappingBooking) {
-      throw new BadRequestException(
-        "This room is already booked for the selected dates"
+      const overlappingBooking = await BookingModel.findOne({
+        category: "hotels",
+        itemId,
+        status: { $ne: "cancelled" },
+        startDate: { $lt: end },
+        endDate: { $gt: start },
+      });
+
+      if (overlappingBooking) {
+        throw new BadRequestException(
+          "This room is already booked for the selected dates"
+        );
+      }
+
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const nights = diffDays > 0 ? diffDays : 1;
+
+      price = room.pricePerNight * nights;
+
+      const hotel = await HotelModel.findById(room.hotelId);
+      owner = hotel?.createdBy?.toString() || null;
+    } else if (category === "tours") {
+      const tour = await TourModel.findById(itemId);
+      if (!tour) {
+        throw new NotFoundException("Tour not found");
+      }
+
+      const matchedStartDate = tour.startDates?.find(
+        (sd) => new Date(sd.date).toDateString() === start.toDateString()
       );
-    }
 
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const nights = diffDays > 0 ? diffDays : 1;
+      if (!matchedStartDate) {
+        throw new BadRequestException(
+          "This tour is not available on the selected start date"
+        );
+      }
 
-    totalPrice = room.pricePerNight * nights;
-  } else if (category === "tours") {
-    // itemId is Tour ID
-    const tour = await TourModel.findById(itemId);
-    if (!tour) {
-      throw new NotFoundException("Tour not found");
-    }
+      const existingBookings = await BookingModel.find({
+        category: "tours",
+        itemId,
+        status: { $ne: "cancelled" },
+        startDate: start,
+      });
 
-    // Match the requested startDate against one of the tour's actual start dates
-    const matchedStartDate = tour.startDates?.find(
-      (sd) => new Date(sd.date).toDateString() === start.toDateString()
-    );
-
-    if (!matchedStartDate) {
-      throw new BadRequestException(
-        "This tour is not available on the selected start date"
+      const alreadyBooked = existingBookings.reduce(
+        (sum, b) => sum + Number(b.details?.guests || b.details?.quantity || 1),
+        0
       );
-    }
 
-    // Sum how many people already booked this exact start date
-    const existingBookings = await BookingModel.find({
-      category: "tours",
-      itemId,
-      status: { $ne: "cancelled" },
-      startDate: start,
-    });
+      if (alreadyBooked + quantity > matchedStartDate.capacity) {
+        throw new BadRequestException(
+          `Only ${Math.max(matchedStartDate.capacity - alreadyBooked, 0)} spot(s) left for this date`
+        );
+      }
 
-    const alreadyBooked = existingBookings.reduce(
-      (sum, b) => sum + Number(b.details?.guests || b.details?.quantity || 1),
-      0
-    );
-
-    if (alreadyBooked + quantity > matchedStartDate.capacity) {
-      throw new BadRequestException(
-        `Only ${Math.max(matchedStartDate.capacity - alreadyBooked, 0)} spot(s) left for this date`
+      const selectedTier = details?.priceTier || "Standard";
+      const priceTier = tour.priceTiers.find(
+        (t) => t.type.toLowerCase() === selectedTier.toLowerCase()
       );
+      const unitPrice = priceTier ? priceTier.price : (tour.priceTiers[0]?.price || 100);
+
+      price = unitPrice * quantity;
+      owner = tour.createdBy?.toString() || null;
+    } else if (category === "flights") {
+      const flight = await FlightModel.findById(itemId);
+      if (!flight) {
+        throw new NotFoundException("Flight not found");
+      }
+      if (flight.availableSeats < quantity) {
+        throw new BadRequestException("Not enough seats available");
+      }
+      price = flight.price * quantity;
+      flight.availableSeats -= quantity;
+      await flight.save();
+      owner = flight.createdBy?.toString() || null;
+    } else if (category === "cars") {
+      const car = await CarModel.findById(itemId);
+      if (!car) {
+        throw new NotFoundException("Car not found");
+      }
+      if (!car.available) {
+        throw new BadRequestException("Car is not available for rental");
+      }
+
+      const overlappingBooking = await BookingModel.findOne({
+        category: "cars",
+        itemId,
+        status: { $ne: "cancelled" },
+        startDate: { $lt: end },
+        endDate: { $gt: start },
+      });
+
+      if (overlappingBooking) {
+        throw new BadRequestException(
+          "This car is already booked for the selected dates"
+        );
+      }
+
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const days = diffDays > 0 ? diffDays : 1;
+
+      price = car.pricePerDay * days;
+      owner = car.createdBy?.toString() || null;
+    } else {
+      throw new BadRequestException("Invalid booking category");
     }
 
-    const selectedTier = details?.priceTier || "Standard";
-    const priceTier = tour.priceTiers.find(
-      (t) => t.type.toLowerCase() === selectedTier.toLowerCase()
-    );
-    const unitPrice = priceTier ? priceTier.price : (tour.priceTiers[0]?.price || 100);
+    return { totalPrice: price, ownerId: owner };
+  });
 
-    totalPrice = unitPrice * quantity;
-  } else if (category === "flights") {
-    // itemId is Flight ID
-    const flight = await FlightModel.findById(itemId);
-    if (!flight) {
-      throw new NotFoundException("Flight not found");
-    }
-    if (flight.availableSeats < quantity) {
-      throw new BadRequestException("Not enough seats available");
-    }
-    totalPrice = flight.price * quantity;
-    flight.availableSeats -= quantity;
-    await flight.save();
-  } else if (category === "cars") {
-    // itemId is Car ID
-    const car = await CarModel.findById(itemId);
-    if (!car) {
-      throw new NotFoundException("Car not found");
-    }
-    if (!car.available) {
-      throw new BadRequestException("Car is not available for rental");
-    }
-
-    // Check for overlapping active bookings on the same car
-    const overlappingBooking = await BookingModel.findOne({
-      category: "cars",
-      itemId,
-      status: { $ne: "cancelled" },
-      startDate: { $lt: end },
-      endDate: { $gt: start },
-    });
-
-    if (overlappingBooking) {
-      throw new BadRequestException(
-        "This car is already booked for the selected dates"
-      );
-    }
-
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const days = diffDays > 0 ? diffDays : 1;
-
-    totalPrice = car.pricePerDay * days;
-  } else {
-    throw new BadRequestException("Invalid booking category");
-  }
+  const finalPrice = Math.round(totalPrice * discountMultiplier * 100) / 100;
 
   const booking = await BookingModel.create({
     userId,
@@ -169,29 +192,11 @@ export const createBooking = async (req: Request, res: Response) => {
     itemId,
     startDate: start,
     endDate: end,
-    totalPrice,
+    totalPrice: finalPrice,
     status: "pending",
     details: details || {},
+    ...(packageBookingId && { packageBookingId }),
   });
-// Notify the service owner (provider/admin) that a new booking came in
-  let ownerId: string | null = null;
-
-  if (category === "hotels") {
-    const room = await RoomModel.findById(itemId);
-    if (room) {
-      const hotel = await HotelModel.findById(room.hotelId);
-      ownerId = hotel?.createdBy?.toString() || null;
-    }
-  } else if (category === "tours") {
-    const tour = await TourModel.findById(itemId);
-    ownerId = tour?.createdBy?.toString() || null;
-  } else if (category === "cars") {
-    const car = await CarModel.findById(itemId);
-    ownerId = car?.createdBy?.toString() || null;
-  } else if (category === "flights") {
-    const flight = await FlightModel.findById(itemId);
-    ownerId = flight?.createdBy?.toString() || null;
-  }
 
   if (ownerId) {
     await sendNotification(ownerId, {
@@ -201,6 +206,48 @@ export const createBooking = async (req: Request, res: Response) => {
       relatedId: booking._id.toString(),
     });
   }
+
+  return booking;
+};
+
+// Soft-rollback helper: cancels a booking we created earlier in the same
+// request, restoring flight seats if needed — used when a later item in a
+// package booking fails and we need to undo the ones that already succeeded.
+const rollbackBooking = async (bookingId: string) => {
+  const booking = await BookingModel.findById(bookingId);
+  if (!booking || booking.status === "cancelled") return;
+
+  if (booking.category === "flights") {
+    const flight = await FlightModel.findById(booking.itemId);
+    if (flight) {
+      const qty = Number(booking.details?.guests || booking.details?.quantity || 1);
+      flight.availableSeats += qty;
+      await flight.save();
+    }
+  }
+
+  booking.status = "cancelled";
+  await booking.save();
+};
+
+// PUBLIC: single-item booking endpoint (unchanged behavior)
+export const createBooking = async (req: Request, res: Response) => {
+  const userId = (req as any).credentials?.user?._id;
+  if (!userId) {
+    throw new UnAuthorizedException("Authentication credentials not found");
+  }
+
+  const { category, itemId, startDate, endDate, details } = req.body;
+
+  const booking = await createSingleBooking({
+    userId,
+    category,
+    itemId,
+    startDate: new Date(startDate),
+    endDate: new Date(endDate),
+    details,
+  });
+
   return successResponse({
     res,
     statusCode: 201,
@@ -237,7 +284,6 @@ export const getBookingDetails = async (req: Request, res: Response) => {
     throw new NotFoundException("Booking not found");
   }
 
-  // Verify ownership
   if (booking.userId.toString() !== userId.toString()) {
     throw new UnAuthorizedException("You are not authorized to view this booking");
   }
@@ -262,7 +308,6 @@ export const cancelBooking = async (req: Request, res: Response) => {
     throw new NotFoundException("Booking not found");
   }
 
-  // Verify ownership
   if (booking.userId.toString() !== userId.toString()) {
     throw new UnAuthorizedException("You are not authorized to cancel this booking");
   }
@@ -280,13 +325,28 @@ export const cancelBooking = async (req: Request, res: Response) => {
     }
   }
 
-  booking.status = "cancelled";
+booking.status = "cancelled";
   await booking.save();
-  
+
+  let refundIssued = false;
+  try {
+    const refund = await refundBookingPayment(
+      booking._id.toString(),
+      booking.packageBookingId,
+      booking.totalPrice
+    );
+    refundIssued = !!refund;
+  } catch (err) {
+    console.error("[refund] Failed to process refund for booking", booking._id, err);
+    // Don't block the cancellation itself if the refund call fails —
+    // the booking is still cancelled; the refund can be retried/handled manually.
+  }
 
   return successResponse({
     res,
-    message: "Booking cancelled successfully",
+    message: refundIssued
+      ? "Booking cancelled and payment refunded successfully"
+      : "Booking cancelled successfully",
     data: booking,
   });
 };
@@ -301,128 +361,51 @@ export const updateBookingStatus = async (
   const user = (req as any).credentials?.user;
 
   if (!user) {
-    throw new UnAuthorizedException(
-      "Authentication credentials not found"
-    );
+    throw new UnAuthorizedException("Authentication credentials not found");
   }
 
   const booking = await BookingModel.findById(bookingId);
 
   if (!booking) {
-    throw new NotFoundException(
-      "Booking not found"
-    );
+    throw new NotFoundException("Booking not found");
   }
-
-  /*
-    Admin:
-    Can update any booking.
-
-    Provider:
-    Can update booking only if the provider
-    owns the service associated with the booking.
-  */
 
   if (user.role === "provider") {
     let serviceOwnerId: any = null;
 
     switch (booking.category) {
       case "hotels": {
-        // For hotels, booking.itemId is the Room ID
-        const room = await RoomModel.findById(
-          booking.itemId
-        );
-
-        if (!room) {
-          throw new NotFoundException(
-            "Room not found"
-          );
-        }
-
-        const hotel =
-          await HotelModel.findById(
-            room.hotelId
-          );
-
-        if (!hotel) {
-          throw new NotFoundException(
-            "Hotel not found"
-          );
-        }
-
-        serviceOwnerId =
-          hotel.createdBy;
-
+        const room = await RoomModel.findById(booking.itemId);
+        if (!room) throw new NotFoundException("Room not found");
+        const hotel = await HotelModel.findById(room.hotelId);
+        if (!hotel) throw new NotFoundException("Hotel not found");
+        serviceOwnerId = hotel.createdBy;
         break;
       }
-
       case "tours": {
-        const tour =
-          await TourModel.findById(
-            booking.itemId
-          );
-
-        if (!tour) {
-          throw new NotFoundException(
-            "Tour not found"
-          );
-        }
-
-        serviceOwnerId =
-          tour.createdBy;
-
+        const tour = await TourModel.findById(booking.itemId);
+        if (!tour) throw new NotFoundException("Tour not found");
+        serviceOwnerId = tour.createdBy;
         break;
       }
-
       case "cars": {
-        const car =
-          await CarModel.findById(
-            booking.itemId
-          );
-
-        if (!car) {
-          throw new NotFoundException(
-            "Car not found"
-          );
-        }
-
-        serviceOwnerId =
-          car.createdBy;
-
+        const car = await CarModel.findById(booking.itemId);
+        if (!car) throw new NotFoundException("Car not found");
+        serviceOwnerId = car.createdBy;
         break;
       }
-
       case "flights": {
-        const flight =
-          await FlightModel.findById(
-            booking.itemId
-          );
-
-        if (!flight) {
-          throw new NotFoundException(
-            "Flight not found"
-          );
-        }
-
-        serviceOwnerId =
-          flight.createdBy;
-
+        const flight = await FlightModel.findById(booking.itemId);
+        if (!flight) throw new NotFoundException("Flight not found");
+        serviceOwnerId = flight.createdBy;
         break;
       }
-
       default:
-        throw new BadRequestException(
-          "Invalid booking category"
-        );
+        throw new BadRequestException("Invalid booking category");
     }
 
-    if (
-      serviceOwnerId.toString() !==
-      user._id.toString()
-    ) {
-      throw new ForbiddenException(
-        "You can only update bookings for services you own"
-      );
+    if (serviceOwnerId.toString() !== user._id.toString()) {
+      throw new ForbiddenException("You can only update bookings for services you own");
     }
   }
 
@@ -445,42 +428,64 @@ booking.status = status;
   });
 };
 
+// =========================================================
+// PACKAGE BOOKING: books every item in a package back-to-back,
+// applying the package discount. All-or-nothing: if any item fails,
+// everything booked so far in this same request is rolled back.
+// =========================================================
+export const createPackageBookingInternal = async (
+  userId: string,
+  items: { category: "hotels" | "tours" | "flights" | "cars"; itemId: string; startDate: string; endDate: string; details?: any }[],
+  discountPercentage: number
+) => {
+  const discountMultiplier = 1 - discountPercentage / 100;
+  const packageBookingId = `pkg_${Date.now()}_${userId}`;
+  const createdBookingIds: string[] = [];
+
+  try {
+    for (const item of items) {
+      const booking = await createSingleBooking({
+        userId,
+        category: item.category,
+        itemId: item.itemId,
+        startDate: new Date(item.startDate),
+        endDate: new Date(item.endDate),
+        details: item.details,
+        discountMultiplier,
+        packageBookingId,
+      });
+      createdBookingIds.push(booking._id.toString());
+    }
+  } catch (err) {
+    // Roll back anything we already booked in this attempt
+    for (const id of createdBookingIds) {
+      await rollbackBooking(id);
+    }
+    throw err;
+  }
+
+  const bookings = await BookingModel.find({ _id: { $in: createdBookingIds } });
+  return { packageBookingId, bookings };
+};
+
 export const getBookingsByCategory = async () => {
   return await BookingModel.aggregate([
-    {
-      $group: {
-        _id: "$category",
-        totalBookings: { $sum: 1 },
-      },
-    },
+    { $group: { _id: "$category", totalBookings: { $sum: 1 } } },
     { $sort: { totalBookings: -1 } },
   ]);
 };
 
 export const getRevenueByCategory = async () => {
   return await BookingModel.aggregate([
-    {
-      $match: { status: { $ne: "cancelled" } },
-    },
-    {
-      $group: {
-        _id: "$category",
-        totalRevenue: { $sum: "$totalPrice" },
-        totalBookings: { $sum: 1 },
-      },
-    },
+    { $match: { status: { $ne: "cancelled" } } },
+    { $group: { _id: "$category", totalRevenue: { $sum: "$totalPrice" }, totalBookings: { $sum: 1 } } },
     { $sort: { totalRevenue: -1 } },
   ]);
 };
 
 export const getBookingsByStatus = async () => {
   return await BookingModel.aggregate([
-    {
-      $group: {
-        _id: "$status",
-        count: { $sum: 1 },
-      },
-    },
+    { $group: { _id: "$status", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
   ]);
 };

@@ -5,7 +5,13 @@ import * as tourService from "./tour.service";
 import { successResponse } from "../../utils/response/success.response";
 
 import { validateRequest } from "../../middleware/requestValidation.middleware";
+<<<<<<< HEAD
 
+=======
+import { AddReviewSchema } from "./types/zod.types";
+import { addOrUpdateReview, getTourReviews, deleteReview } from "./tour.service";
+import { requireProviderType } from "../../middleware/providerType.middleware";
+>>>>>>> origin/main
 import {
   CreateTourSchema,
   UpdateTourSchema,
@@ -107,7 +113,11 @@ router.post(
     "admin",
     "provider"
   ),
+<<<<<<< HEAD
 
+=======
+requireProviderType("travel", "both"),
+>>>>>>> origin/main
   validateRequest(
     CreateTourSchema
   ),
@@ -269,5 +279,38 @@ router.patch(
     }
   )
 );
+<<<<<<< HEAD
+=======
+// ADD REVIEW
+router.post(
+  "/:id/reviews",
+  authMiddleware,
+  validateRequest(AddReviewSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const { rating, comment } = req.body;
+    const reviews = await addOrUpdateReview(req.params.id, userId, rating, comment);
+    return successResponse({ res, message: "Review submitted successfully", data: reviews });
+  })
+);
+// GET TOUR REVIEWS
+router.get(
+  "/:id/reviews",
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await getTourReviews(req.params.id);
+    return successResponse({ res, message: "Reviews retrieved successfully", data });
+  })
+);
+// DELETE REVIEW
+router.delete(
+  "/:id/reviews/:reviewUserId",
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).credentials.user;
+    const reviews = await deleteReview(req.params.id, req.params.reviewUserId, user._id, user.role);
+    return successResponse({ res, message: "Review deleted successfully", data: reviews });
+  })
+);
+>>>>>>> origin/main
 
 export default router;

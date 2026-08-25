@@ -1,5 +1,9 @@
 import NotificationModel, { INotification } from "../../DB/models/notification.model";
+<<<<<<< HEAD
 import { io } from "../../index";
+=======
+import { io } from "../../socket/socket";
+>>>>>>> origin/main
 
 export const sendNotification = async (
   userId: string,

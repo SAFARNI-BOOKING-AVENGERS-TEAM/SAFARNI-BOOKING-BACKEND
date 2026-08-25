@@ -28,6 +28,11 @@ import { optionalAuthMiddleware } from "../../middleware/optionalAuth.middleware
 
 import { BadRequestException } from "../../utils/response/error.response";
 
+<<<<<<< HEAD
+=======
+import { requireProviderType } from "../../middleware/providerType.middleware";
+
+>>>>>>> origin/main
 const router = Router();
 
 // GET ALL HOTELS
@@ -98,7 +103,11 @@ router.post(
     "admin",
     "provider"
   ),
+<<<<<<< HEAD
 
+=======
+requireProviderType("travel", "both"),
+>>>>>>> origin/main
   validateRequest(
     CreateHotelSchema
   ),
