@@ -1,4 +1,4 @@
-import { stripeClient } from "../../utils/payment/stripeClient";
+import { getStripeClient } from "../../utils/payment/stripeClient";
 import PaymentModel from "../../DB/models/payment.model";
 import BookingModel from "../../DB/models/booking.model";
 import { NotFoundException, BadRequestException, ForbiddenException } from "../../utils/response/error.response";
@@ -12,6 +12,7 @@ interface CreateIntentInput {
 }
 
 export const createPaymentIntent = async (userId: string, input: CreateIntentInput) => {
+  const stripeClient = getStripeClient();
   let amount = 0;
   let bookingIds: string[] = [];
 
@@ -87,8 +88,6 @@ export const finalizePayment = async (stripePaymentIntentId: string) => {
     }
   }
 
-  // Send the success notification on the first successful finalization only.
-  // Retries are still allowed to repair booking state without duplicating messages.
   if (!wasAlreadySucceeded && bookings.length > 0) {
     await sendNotification(payment.userId.toString(), {
       title: "Payment Successful",
@@ -108,6 +107,7 @@ export const finalizePayment = async (stripePaymentIntentId: string) => {
 };
 
 export const confirmPayment = async (userId: string, paymentIntentId: string) => {
+  const stripeClient = getStripeClient();
   const payment = await PaymentModel.findOne({ stripePaymentIntentId: paymentIntentId });
   if (!payment) throw new NotFoundException("Payment record not found");
   if (payment.userId.toString() !== userId.toString()) throw new ForbiddenException("You are not authorized to confirm this payment");
@@ -121,6 +121,7 @@ export const confirmPayment = async (userId: string, paymentIntentId: string) =>
 };
 
 export const refundBookingPayment = async (bookingId: string, packageBookingId: string | undefined, amount: number) => {
+  const stripeClient = getStripeClient();
   const payment = await PaymentModel.findOne({
     status: "succeeded",
     ...(packageBookingId ? { packageBookingId } : { bookingId }),
