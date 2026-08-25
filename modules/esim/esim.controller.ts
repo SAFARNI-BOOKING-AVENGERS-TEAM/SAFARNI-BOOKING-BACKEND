@@ -6,6 +6,7 @@ import { validateRequest } from "../../middleware/requestValidation.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { successResponse } from "../../utils/response/success.response";
 import { requireProviderType } from "../../middleware/providerType.middleware";
+import { retryPaidESIMProvision } from "../payment/payment.service";
 import {
   CreateESIMPlanSchema,
   UpdateESIMPlanSchema,
@@ -63,11 +64,13 @@ esimRouter.patch("/plans/:id/status", authMiddleware, authorizeRoles("admin"), v
   return successResponse({ res, message: `eSIM plan ${req.body.status} successfully`, data: plan });
 }));
 
+// Create the order only. The customer must then pay its esimOrderId through
+// /payments/checkout-session before provisioning starts.
 esimRouter.post("/orders", authMiddleware, validateRequest(PurchaseESIMSchema), asyncHandler(async (req: Request, res: Response) => {
   const userId = (req as any).credentials.user._id;
   const { planId, packageBookingId } = req.body;
   const order = await purchaseESIM(userId, planId, packageBookingId);
-  return successResponse({ res, statusCode: 201, message: "eSIM purchased successfully", data: order });
+  return successResponse({ res, statusCode: 201, message: "eSIM order created. Payment is required before provisioning.", data: order });
 }));
 
 esimRouter.get("/orders/my-orders", authMiddleware, asyncHandler(async (req: Request, res: Response) => {
@@ -80,6 +83,12 @@ esimRouter.get("/orders/:id", authMiddleware, asyncHandler(async (req: Request, 
   const userId = (req as any).credentials.user._id;
   const order = await getESIMOrderDetails(String(req.params.id), userId);
   return successResponse({ res, message: "eSIM order retrieved successfully", data: order });
+}));
+
+esimRouter.post("/orders/:id/retry-provision", authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const userId = (req as any).credentials.user._id;
+  const order = await retryPaidESIMProvision(userId, String(req.params.id));
+  return successResponse({ res, message: "eSIM provisioning completed successfully", data: order });
 }));
 
 esimRouter.patch("/orders/:id/activate", authMiddleware, asyncHandler(async (req: Request, res: Response) => {
