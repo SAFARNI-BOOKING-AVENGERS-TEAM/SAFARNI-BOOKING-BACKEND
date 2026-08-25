@@ -4,6 +4,7 @@ import { adminMiddleware } from "../../middleware/admin.middleware";
 import { authorizeRoles } from "../../middleware/admin.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
+import { requireSucceededPaymentForConfirmation } from "../../middleware/paidBookingConfirmation.middleware";
 import {
   CreateBookingSchema,
   UpdateBookingStatusSchema,
@@ -22,45 +23,41 @@ import { successResponse } from "../../utils/response/success.response";
 
 const bookingRouter = Router();
 
-// Apply authMiddleware to all booking routes
 bookingRouter.use(authMiddleware);
 
-// Create a booking
 bookingRouter.post(
   "/",
   validateRequest(CreateBookingSchema),
   asyncHandler(createBooking)
 );
 
-// Get logged-in user's bookings
 bookingRouter.get(
   "/my-bookings",
   asyncHandler(getMyBookings)
 );
 
-// Get single booking details
 bookingRouter.get(
   "/:bookingId",
   asyncHandler(getBookingDetails)
 );
 
-// Cancel a booking
 bookingRouter.patch(
   "/:bookingId/cancel",
   asyncHandler(cancelBooking)
 );
-// Update booking status (admin or provider)
+
 bookingRouter.patch(
   "/:bookingId/status",
   authorizeRoles("admin", "provider"),
   validateRequest(UpdateBookingStatusSchema),
+  requireSucceededPaymentForConfirmation,
   asyncHandler(updateBookingStatus)
 );
 
 bookingRouter.get(
   "/admin/stats/by-category",
   adminMiddleware,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const result = await getBookingsByCategory();
     return successResponse({ res, message: "Bookings by category", data: result });
   })
@@ -69,7 +66,7 @@ bookingRouter.get(
 bookingRouter.get(
   "/admin/stats/revenue",
   adminMiddleware,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const result = await getRevenueByCategory();
     return successResponse({ res, message: "Revenue by category", data: result });
   })
@@ -78,7 +75,7 @@ bookingRouter.get(
 bookingRouter.get(
   "/admin/stats/by-status",
   adminMiddleware,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const result = await getBookingsByStatus();
     return successResponse({ res, message: "Bookings by status", data: result });
   })
