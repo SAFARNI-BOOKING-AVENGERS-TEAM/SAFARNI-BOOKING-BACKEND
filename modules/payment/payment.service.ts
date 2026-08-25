@@ -5,6 +5,7 @@ import BookingModel from "../../DB/models/booking.model";
 import ESIMOrderModel from "../../DB/models/esimOrder.model";
 import { NotFoundException, BadRequestException, ForbiddenException } from "../../utils/response/error.response";
 import { sendNotification } from "../../utils/notifications/sendNotification";
+import { withLock } from "../../utils/concurrency/lock";
 import { fulfillPaidESIMOrder } from "../esim/esim.service";
 
 const toCents = (amount: number) => Math.round(amount * 100);
@@ -79,7 +80,7 @@ const resolvePaymentTarget = async (userId: string, input: PaymentTargetInput): 
     return {
       amount: order.price,
       currency: (order.currency || "USD").toLowerCase(),
-      label: "SAFARNI eSIM plan",
+      label: order.planSnapshot?.name ? `SAFARNI eSIM - ${order.planSnapshot.name}` : "SAFARNI eSIM plan",
       bookingIds: [],
       targetFilter: { esimOrderId: input.esimOrderId },
     };
@@ -94,53 +95,58 @@ const ensurePayable = async (targetFilter: Record<string, string>) => {
 };
 
 const finalizePaymentRecord = async (payment: any, suppressFulfillmentError = false) => {
-  const wasAlreadySucceeded = payment.status === "succeeded";
-  if (!wasAlreadySucceeded) {
-    payment.status = "succeeded";
-    await payment.save();
-  }
+  return await withLock(`payment-finalize:${payment._id.toString()}`, async () => {
+    const freshPayment = await PaymentModel.findById(payment._id);
+    if (!freshPayment) throw new NotFoundException("Payment record not found");
 
-  if (payment.esimOrderId) {
-    try {
-      const order = await fulfillPaidESIMOrder(payment.esimOrderId);
-      return { payment, fulfillmentStatus: order.status };
-    } catch (error) {
-      if (!suppressFulfillmentError) throw error;
-      console.error(`[payment] Paid eSIM ${payment.esimOrderId} still needs provisioning:`, error);
-      return { payment, fulfillmentStatus: "failed" };
+    const wasAlreadySucceeded = freshPayment.status === "succeeded";
+    if (!wasAlreadySucceeded) {
+      freshPayment.status = "succeeded";
+      await freshPayment.save();
     }
-  }
 
-  const query = payment.bookingId
-    ? { _id: payment.bookingId }
-    : { packageBookingId: payment.packageBookingId };
-
-  const bookings = await BookingModel.find(query);
-  let repairedBookingState = false;
-  for (const booking of bookings) {
-    if (booking.status !== "confirmed") {
-      booking.status = "confirmed";
-      await booking.save();
-      repairedBookingState = true;
+    if (freshPayment.esimOrderId) {
+      try {
+        const order = await fulfillPaidESIMOrder(freshPayment.esimOrderId);
+        return { payment: freshPayment, fulfillmentStatus: order.status };
+      } catch (error) {
+        if (!suppressFulfillmentError) throw error;
+        console.error(`[payment] Paid eSIM ${freshPayment.esimOrderId} still needs provisioning:`, error);
+        return { payment: freshPayment, fulfillmentStatus: "failed" };
+      }
     }
-  }
 
-  if (!wasAlreadySucceeded && bookings.length > 0) {
-    await sendNotification(payment.userId.toString(), {
-      title: "Payment Successful",
-      message: payment.packageBookingId
-        ? `Your payment of $${payment.amount} was successful, and your package booking (${bookings.length} items) is now confirmed.`
-        : `Your payment of $${payment.amount} was successful, and your booking is now confirmed.`,
-      type: "booking_status_changed",
-      relatedId: (payment.bookingId || payment.packageBookingId)!,
-    });
-  }
+    const query = freshPayment.bookingId
+      ? { _id: freshPayment.bookingId }
+      : { packageBookingId: freshPayment.packageBookingId };
 
-  if (wasAlreadySucceeded && repairedBookingState) {
-    console.warn(`[payment] Repaired booking state for succeeded payment ${payment._id}`);
-  }
+    const bookings = await BookingModel.find(query);
+    let repairedBookingState = false;
+    for (const booking of bookings) {
+      if (booking.status !== "confirmed") {
+        booking.status = "confirmed";
+        await booking.save();
+        repairedBookingState = true;
+      }
+    }
 
-  return { payment, fulfillmentStatus: bookings.length ? "confirmed" : "succeeded" };
+    if (!wasAlreadySucceeded && bookings.length > 0) {
+      await sendNotification(freshPayment.userId.toString(), {
+        title: "Payment Successful",
+        message: freshPayment.packageBookingId
+          ? `Your payment of $${freshPayment.amount} was successful, and your package booking (${bookings.length} items) is now confirmed.`
+          : `Your payment of $${freshPayment.amount} was successful, and your booking is now confirmed.`,
+        type: "booking_status_changed",
+        relatedId: (freshPayment.bookingId || freshPayment.packageBookingId)!,
+      });
+    }
+
+    if (wasAlreadySucceeded && repairedBookingState) {
+      console.warn(`[payment] Repaired booking state for succeeded payment ${freshPayment._id}`);
+    }
+
+    return { payment: freshPayment, fulfillmentStatus: bookings.length ? "confirmed" : "succeeded" };
+  });
 };
 
 export const createPaymentIntent = async (userId: string, input: PaymentTargetInput) => {
@@ -149,7 +155,12 @@ export const createPaymentIntent = async (userId: string, input: PaymentTargetIn
   if (target.amount <= 0) throw new BadRequestException("Invalid payment amount");
   await ensurePayable(target.targetFilter);
 
-  const existingPending = await PaymentModel.findOne({ ...target.targetFilter, status: "pending", stripePaymentIntentId: { $exists: true } }).sort({ createdAt: -1 });
+  const existingPending = await PaymentModel.findOne({
+    ...target.targetFilter,
+    status: "pending",
+    stripePaymentIntentId: { $exists: true },
+  }).sort({ createdAt: -1 });
+
   if (existingPending?.stripePaymentIntentId && existingPending.stripePaymentIntentId.startsWith("pi_")) {
     try {
       const existingIntent = await stripeClient.paymentIntents.retrieve(existingPending.stripePaymentIntentId);
@@ -198,7 +209,12 @@ export const createCheckoutSession = async (userId: string, input: PaymentTarget
   if (target.amount <= 0) throw new BadRequestException("Invalid payment amount");
   await ensurePayable(target.targetFilter);
 
-  const existingPending = await PaymentModel.findOne({ ...target.targetFilter, status: "pending", stripeCheckoutSessionId: { $exists: true } }).sort({ createdAt: -1 });
+  const existingPending = await PaymentModel.findOne({
+    ...target.targetFilter,
+    status: "pending",
+    stripeCheckoutSessionId: { $exists: true },
+  }).sort({ createdAt: -1 });
+
   if (existingPending?.stripeCheckoutSessionId) {
     try {
       const existingSession = await stripeClient.checkout.sessions.retrieve(existingPending.stripeCheckoutSessionId);
@@ -247,9 +263,6 @@ export const createCheckoutSession = async (userId: string, input: PaymentTarget
   payment.amount = target.amount;
   payment.currency = target.currency;
   payment.stripeCheckoutSessionId = session.id;
-  // Old local databases may still have the previous non-sparse unique index on
-  // stripePaymentIntentId. Keep this field unique/non-null until Stripe assigns
-  // the real pi_ identifier, then replace it in finalizeCheckoutSession().
   if (!payment.stripePaymentIntentId || !payment.stripePaymentIntentId.startsWith("pi_")) {
     payment.stripePaymentIntentId = `checkout:${session.id}`;
   }
@@ -284,7 +297,11 @@ export const finalizeCheckoutSession = async (
   const paymentIntentId = typeof session.payment_intent === "string"
     ? session.payment_intent
     : session.payment_intent?.id;
-  if (paymentIntentId) payment.stripePaymentIntentId = paymentIntentId;
+
+  if (paymentIntentId && payment.stripePaymentIntentId !== paymentIntentId) {
+    payment.stripePaymentIntentId = paymentIntentId;
+    await payment.save();
+  }
 
   return await finalizePaymentRecord(payment, suppressFulfillmentError);
 };
@@ -307,11 +324,13 @@ export const verifyCheckoutSession = async (userId: string, sessionId: string) =
     fulfillmentStatus = finalized?.fulfillmentStatus || "succeeded";
   }
 
+  const refreshedPayment = await PaymentModel.findById(payment._id);
+
   return {
     sessionId: session.id,
     sessionStatus: session.status,
     paymentStatus: session.payment_status,
-    paymentRecordStatus: payment.status,
+    paymentRecordStatus: refreshedPayment?.status || payment.status,
     fulfillmentStatus,
     amount: payment.amount,
     currency: payment.currency,
