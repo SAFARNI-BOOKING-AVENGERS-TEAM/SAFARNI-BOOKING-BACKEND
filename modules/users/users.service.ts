@@ -13,11 +13,8 @@ const toPublicProfilePicture = (
 ) => {
   if (!profilePicture?.url) return profilePicture;
 
-  // Cloudinary (and any other absolute remote URL) is already browser-safe.
   if (/^https?:\/\//i.test(profilePicture.url)) return profilePicture;
 
-  // Older/local development uploads may have been stored as a filesystem path
-  // such as "uploads\\image-123.jpg". Convert that into the public Express URL.
   const normalizedPath = profilePicture.url.replace(/\\/g, "/");
   const filename = profilePicture.publicId || normalizedPath.split("/").pop();
   if (!filename) return profilePicture;
@@ -153,7 +150,6 @@ export const updateProfileInfo = async (
   });
 };
 
-// ADMIN: Update User Role
 export const updateUserRole = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { role, providerType } = req.body;
@@ -165,10 +161,15 @@ export const updateUserRole = async (req: Request, res: Response) => {
     );
   }
 
-  if (role === "provider" && providerType && !["travel", "telecom", "both"].includes(providerType)) {
+  if (role === "provider" && !["travel", "telecom", "both"].includes(providerType)) {
     throw new BadRequestException(
-      `Invalid providerType. Must be one of: travel, telecom, both`
+      "providerType is required for providers and must be travel, telecom, or both"
     );
+  }
+
+  const actorId = (req as IRequest).credentials?.user?._id;
+  if (actorId && String(actorId) === String(id) && role !== "admin") {
+    throw new BadRequestException("You cannot remove your own admin role");
   }
 
   const user = await UserModel.findById(id);
@@ -176,9 +177,18 @@ export const updateUserRole = async (req: Request, res: Response) => {
     throw new NotFoundException("User not found");
   }
 
+  if (user.role === "admin" && role !== "admin") {
+    const adminCount = await UserModel.countDocuments({ role: "admin" });
+    if (adminCount <= 1) {
+      throw new BadRequestException("At least one admin account must remain");
+    }
+  }
+
   user.role = role;
-  if (role === "provider" && providerType) {
+  if (role === "provider") {
     user.providerType = providerType;
+  } else {
+    user.providerType = undefined;
   }
   await user.save();
 
