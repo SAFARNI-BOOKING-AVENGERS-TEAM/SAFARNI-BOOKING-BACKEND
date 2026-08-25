@@ -2,12 +2,7 @@ import { IUser } from "./../../DB/models/user.model";
 import jwt, { JwtPayload, Secret, SignOptions } from "jsonwebtoken";
 import { Types } from "mongoose";
 import UserModel from "../../DB/models/user.model";
-import {
-  NotFoundException,
-  UnAuthorizedException,
-} from "../response/error.response";
-
-// Types 
+import { NotFoundException, UnAuthorizedException } from "../response/error.response";
 
 export enum TokenType {
   access = "access",
@@ -20,10 +15,7 @@ const accessExpiresIn = (
     : process.env.ACCESS_TOKEN_EXPIRES
 ) as SignOptions["expiresIn"];
 
-const refreshExpiresIn = process.env
-  .REFRESH_TOKEN_EXPIRES as SignOptions["expiresIn"];
-
-// Generate Access & Refresh  
+const refreshExpiresIn = process.env.REFRESH_TOKEN_EXPIRES as SignOptions["expiresIn"];
 
 export const generateTokens = (
   userId: Types.ObjectId,
@@ -32,45 +24,29 @@ export const generateTokens = (
   const accessSecret = process.env.ACCESS_TOKEN_SECRET as Secret;
   const refreshSecret = process.env.REFRESH_TOKEN_SECRET as Secret;
 
-
   if (!accessSecret || !refreshSecret) {
     throw new UnAuthorizedException("Token secrets are missing");
   }
 
-  const access_token = jwt.sign({ _id: userId }, accessSecret, {
-    expiresIn: accessExpiresIn,
-  });
-
-  const refresh_token = jwt.sign(
-    { _id: userId, v: refreshTokenVersion },
-    refreshSecret,
-    {
-      expiresIn: refreshExpiresIn,
-    }
-  );
-
+  const access_token = jwt.sign({ _id: userId }, accessSecret, { expiresIn: accessExpiresIn });
+  const refresh_token = jwt.sign({ _id: userId, v: refreshTokenVersion }, refreshSecret, { expiresIn: refreshExpiresIn });
   return { access_token, refresh_token };
 };
-
-// Verify Token 
 
 export const verifyToken = async (
   token: string,
   type: TokenType = TokenType.access
 ): Promise<{ decoded: JwtPayload; user: IUser }> => {
-  const secret =
-    type === TokenType.refresh
-      ? (process.env.REFRESH_TOKEN_SECRET as Secret)
-      : (process.env.ACCESS_TOKEN_SECRET as Secret);
+  const secret = type === TokenType.refresh
+    ? (process.env.REFRESH_TOKEN_SECRET as Secret)
+    : (process.env.ACCESS_TOKEN_SECRET as Secret);
 
-  if (!secret) {
-    throw new UnAuthorizedException("Token secret is missing");
-  }
+  if (!secret) throw new UnAuthorizedException("Token secret is missing");
 
   let decoded: JwtPayload;
   try {
     decoded = jwt.verify(token, secret) as JwtPayload;
-  } catch (err) {
+  } catch {
     throw new UnAuthorizedException("Invalid or expired token");
   }
 
@@ -78,11 +54,8 @@ export const verifyToken = async (
     throw new UnAuthorizedException("Invalid token payload");
   }
 
-  const user = await UserModel.findById(decoded._id);
-
-  if (!user) {
-    throw new NotFoundException("Invalid User Id decoded from token");
-  }
+  const user = await UserModel.findById(decoded._id).select("+refreshTokenVersion");
+  if (!user) throw new NotFoundException("Invalid User Id decoded from token");
 
   return { user, decoded };
 };
