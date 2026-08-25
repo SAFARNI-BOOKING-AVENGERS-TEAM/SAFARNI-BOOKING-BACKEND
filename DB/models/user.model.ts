@@ -12,10 +12,7 @@ export interface IUser extends Document {
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
   refreshTokenVersion: number;
-  profilePicture?: {
-    url: string;
-    publicId: string;
-  };
+  profilePicture?: { url: string; publicId: string };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,11 +28,7 @@ const userSchema = new Schema<IUser>(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please use a valid email address"],
     },
-    password: {
-      type: String,
-      required: [true, "Password is required"],
-      select: false,
-    },
+    password: { type: String, required: [true, "Password is required"], select: false },
     isVerified: { type: Boolean, default: false },
     role: { type: String, enum: ["user", "provider", "admin"], default: "user" },
     providerType: { type: String, enum: ["travel", "telecom", "both"] },
@@ -43,7 +36,7 @@ const userSchema = new Schema<IUser>(
     passwordResetExpires: { type: Date, select: false },
     emailVerificationToken: { type: String, select: false },
     emailVerificationExpires: { type: Date, select: false },
-    refreshTokenVersion: { type: Number, default: 0, select: false },
+    refreshTokenVersion: { type: Number, default: 0 },
     profilePicture: { url: String, publicId: String },
   },
   {
