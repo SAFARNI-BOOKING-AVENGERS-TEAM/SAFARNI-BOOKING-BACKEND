@@ -9,7 +9,7 @@ export interface IWebhookEvent extends Document {
   /** e.g. "checkout.session.completed", "payment_intent.payment_failed", "charge.refunded" */
   type: string;
 
-  status: WebhookEventStatus;
+  status: WebhookEventStatus;//status of the webhook event processing: "received" (just recorded), "processed" (successfully handled), or "failed" (error during processing).
 
   livemode: boolean;
 
@@ -40,6 +40,7 @@ const webhookEventSchema = new Schema<IWebhookEvent>(
 
     status: {
       type: String,
+
       enum: ["received", "processed", "failed"],
       default: "received",
     },

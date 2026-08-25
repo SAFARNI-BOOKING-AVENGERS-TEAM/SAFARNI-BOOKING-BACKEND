@@ -32,7 +32,9 @@ export const checkout = async (req: IRequest, res: Response) => {
     bookingId?: string;
     packageBookingId?: string;
   };
-
+// Create a new Stripe Checkout Session for the user and the specified booking or package.
+// The service layer handles the logic of checking for existing sessions, validating ownership, and preparing the session data.
+// The result includes the session ID and URL for redirecting the user to complete the payment.
   const result = await createCheckoutSession({
     userId: new Types.ObjectId(user._id as unknown as string),
     userEmail: user.email,

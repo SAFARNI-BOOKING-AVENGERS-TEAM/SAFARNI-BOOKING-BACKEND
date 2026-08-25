@@ -37,28 +37,14 @@ export interface PaymentHistoryFilter {
   page: number;
   limit: number;
 }
+//this repository is responsible for all database interactions related to payments, refunds, and webhook events.
+//  It provides methods to create, retrieve, and update payment and refund records, as well as to manage webhook event records for idempotency checks.
 
 class PaymentRepository {
   // ---- Payment ----
-
-  async createPayment(
-    input: CreatePaymentInput,
-    session?: ClientSession
-  ): Promise<IPayment> {
-    const [payment] = await PaymentModel.create(
-      [
-        {
-          _id: input._id,
-          userId: input.userId,
-          bookingId: input.bookingId ?? null,
-          packageBookingId: input.packageBookingId ?? null,
-          amount: input.amount,
-          idempotencyKey: input.idempotencyKey,
-          checkoutExpiresAt: input.checkoutExpiresAt ?? null,
-        },
-      ],
-      { session }
-    );
+//createPayment creates a new payment record in the database with the provided input data, including user ID, booking ID, amount, and idempotency key. It returns the created payment document.
+async createPayment(input: CreatePaymentInput, session?: ClientSession): Promise<IPayment> {
+    const [payment] = await PaymentModel.create([input], { session });
     return payment;
   }
 
@@ -66,6 +52,8 @@ class PaymentRepository {
     paymentId: Types.ObjectId | string,
     session?: ClientSession
   ): Promise<IPayment | null> {
+    // Note: Mongoose's findById() accepts either a string or ObjectId, so we allow both here.
+    // If a string is passed, Mongoose will convert it to ObjectId internally.
     return PaymentModel.findById(paymentId).session(session ?? null);
   }
 
@@ -128,7 +116,7 @@ class PaymentRepository {
     );
   }
 
-  async updateStatus(
+  async updatePaymentStatus(
     paymentId: Types.ObjectId,
     paymentStatus: PaymentStatus,
     extra: Partial<
@@ -145,7 +133,7 @@ class PaymentRepository {
       { new: true, session }
     );
   }
-
+//refund operations are handled by the following methods, which allow for creating refunds, finding refunds by payment ID, and incrementing the refunded amount on a payment record. These methods ensure that refund operations are properly recorded and linked to the corresponding payment and booking records.
   async incrementRefundedAmount(
     paymentId: Types.ObjectId,
     amount: number,

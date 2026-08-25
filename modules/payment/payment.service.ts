@@ -36,7 +36,11 @@ function toStripeMinorUnits(amount: number, currency: "USD"): number {
     }
   }
 }
-
+// ============================================================
+// PART 1 — checkout session creation
+// ============================================================
+/// Generates a human-readable line item label for a single booking, 
+/// in the Stripe Checkout Session line_items array.
 function bookingLineItemLabel(booking: IBooking): string {
   const categoryLabel =
     booking.category.charAt(0).toUpperCase() + booking.category.slice(1);
@@ -54,15 +58,20 @@ async function resolveCheckoutTarget(
   userId: Types.ObjectId,
   dto: Pick<CreateCheckoutSessionDTO, "bookingId" | "packageBookingId">
 ): Promise<CheckoutTarget> {
-  let bookings: IBooking[];
 
-  if (dto.bookingId) {
+  let bookings: IBooking[];
+// Exactly one of bookingId or packageBookingId is set — enforced by 
+// payment.validation.ts before this ever reaches the service.
+ if (dto.bookingId) {
     const booking = await paymentRepository.findBookingById(
       new Types.ObjectId(dto.bookingId)
     );
     if (!booking) {
       throw new NotFoundException("Booking not found");
     }
+    // Wrap in array for uniform processing below
+    // (the rest of the function expects an array of bookings, even if it's
+    // just one).
     bookings = [booking];
   } else if (dto.packageBookingId) {
     bookings = await paymentRepository.findBookingsByPackageId(
@@ -93,7 +102,7 @@ async function resolveCheckoutTarget(
         `Booking ${booking._id} has been cancelled and can no longer be paid for`
       );
     }
-    if (!["unpaid", "failed"].includes(booking.$assertPopulated("paymentStatus") as PaymentStatus)) {
+    if (!["unpaid", "failed"].includes(booking.paymentStatus)) {
       throw new ConflictException(
         `Booking ${booking._id} is already ${booking.paymentStatus  === "pending" ? "awaiting payment" : booking.paymentStatus}`
       );
@@ -101,6 +110,7 @@ async function resolveCheckoutTarget(
   }
 
   const amount =
+  
     Math.round(bookings.reduce((sum, b) => sum + b.totalPrice, 0) * 100) /
     100;
 
@@ -123,6 +133,7 @@ async function findReusableSession(
   target: CheckoutTarget
 ): Promise<CheckoutSessionResult | null> {
   const existing = target.bookingId
+  // If the target is a single booking, look for an active payment by bookingId. If it's a package, look for an active payment by packageBookingId.
     ? await paymentRepository.findActiveByBookingId(target.bookingId)
     : await paymentRepository.findActiveByPackageBookingId(
         target.packageBookingId as string
@@ -142,11 +153,16 @@ async function findReusableSession(
   // paymentStatus === "pending" from here on.
   const notExpired =
     existing.checkoutExpiresAt && existing.checkoutExpiresAt > new Date();
-
+// If the existing session is still open and not expired, return its URL.
+// Otherwise, mark it failed so a new one can be created.
   if (existing.stripeCheckoutSessionId && notExpired) {
+    // Retrieve the session from Stripe to check its status. If it's still open, return its URL and expiration time. If it's closed or expired, mark it as failed so a new session can be created.
     const session = await stripeClient.checkout.sessions.retrieve(
       existing.stripeCheckoutSessionId
     );
+    // Stripe's API docs say "The session will expire approximately 24 hours after it is created." 
+    // But in practice, the session can be closed by Stripe before that if the user abandons it.
+    //  So we check both the expiration timestamp and the session status.
     if (session.status === "open" && session.url) {
       return {
         paymentId: (existing._id as Types.ObjectId).toString(),
@@ -159,7 +175,7 @@ async function findReusableSession(
   // The previous attempt expired or Stripe no longer considers it open —
   // free it up so a new one can be created instead of blocking forever
   // on the partial unique index.
-  await paymentRepository.updateStatus(
+  await paymentRepository.updatePaymentStatus(
     existing._id as Types.ObjectId,
     "failed",
     { failureReason: "Checkout session expired before completion" }
@@ -171,22 +187,29 @@ async function findReusableSession(
 
   return null;
 }
+// ============================================================
+// PART 1 — checkout session creation
+// ============================================================
+// Creates a Stripe Checkout Session for the given user and booking(s).
+// Returns the session URL and expiration time. Idempotent: if a live
+// pending session already exists for this exact target, returns that
+// instead of creating a new one.
 
 export async function createCheckoutSession(
   dto: CreateCheckoutSessionDTO
 ): Promise<CheckoutSessionResult> {
+// Resolve the target and compute the amount FROM the stored Booking document(s) — never from anything the client sent. Also verifies
+// ownership and that every booking is in a payable state.
   const target = await resolveCheckoutTarget(dto.userId, dto);
-
+// If there's already a live (non-expired) pending Checkout Session for
+// this exact target, hand back its URL instead of creating a new one.
   const reusable = await findReusableSession(target);
+  
   if (reusable) return reusable;
 
   const bookingIds = target.bookings.map((b) => b._id as Types.ObjectId);
 
-  // ⚠️ TRANSACTION REQUIRED: this needs MongoDB running as a replica set
-  // (or Atlas). On a standalone instance, session.startTransaction() below
-  // throws immediately. See the architecture review for how to enable
-  // this locally (`mongod --replSet rs0` + `rs.initiate()`) — do this
-  // before deploying, not after something breaks in production.
+
   const dbSession = await mongoose.startSession();
   let paymentId: Types.ObjectId;
 
@@ -212,7 +235,7 @@ export async function createCheckoutSession(
       payment._id as Types.ObjectId,
       "pending",
       dbSession
-    );
+    );          
 
     await dbSession.commitTransaction();
     paymentId = payment._id as Types.ObjectId;
@@ -241,7 +264,7 @@ export async function createCheckoutSession(
         line_items: target.bookings.map((booking) => ({
           quantity: 1,
           price_data: {
-            currency: "usd",
+            currency: "usd",                                    
             unit_amount: toStripeMinorUnits(booking.totalPrice, "USD"),
             product_data: {
               name: bookingLineItemLabel(booking),
@@ -265,6 +288,7 @@ export async function createCheckoutSession(
         success_url: `${FRONTEND_URL}/booking-success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${FRONTEND_URL}/booking-cancel?payment_id=${paymentId.toString()}`,
       },
+      
       { idempotencyKey: `checkout_${paymentId}` }
     );
 
@@ -289,7 +313,7 @@ export async function createCheckoutSession(
     // Free up the partial unique index so the user can retry, and roll
     // the denormalized Booking.paymentStatus back so it doesn't get stuck
     // showing "pending" forever for a checkout session that never existed.
-    await paymentRepository.updateStatus(paymentId, "failed", {
+    await paymentRepository.updatePaymentStatus(paymentId, "failed", {
       failureReason:
         err?.message || "Stripe checkout session creation failed",
     });
@@ -352,7 +376,7 @@ export async function markPaymentPaid(
   try {
     dbSession.startTransaction();
 
-    await paymentRepository.updateStatus(
+    await paymentRepository.updatePaymentStatus(
       payment._id as Types.ObjectId,
       "paid",
       { stripePaymentIntentId, stripeCustomerId },
@@ -408,7 +432,7 @@ export async function markPaymentFailed(
   const dbSession = await mongoose.startSession(); // ⚠️ TRANSACTION REQUIRED — see part 1
   try {
     dbSession.startTransaction();
-    await paymentRepository.updateStatus(
+    await paymentRepository.updatePaymentStatus(
       payment._id as Types.ObjectId,
       "failed",
       { failureReason },

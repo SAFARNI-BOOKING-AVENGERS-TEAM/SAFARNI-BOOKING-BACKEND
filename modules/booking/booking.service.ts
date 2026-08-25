@@ -282,6 +282,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
 
   booking.status = "cancelled";
   await booking.save();
+  
 
   return successResponse({
     res,

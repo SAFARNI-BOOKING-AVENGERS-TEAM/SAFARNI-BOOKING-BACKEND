@@ -26,6 +26,10 @@ function snapshotOf(event: Stripe.Event): Record<string, unknown> {
 
 async function dispatchEvent(event: Stripe.Event): Promise<void> {
   switch (event.type) {
+    // Handle different Stripe event types here
+    // checkout.session.completed for immediate payments,
+    //  async_payment_succeeded for async payments, 
+    // and async_payment_failed for failed async payments.
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       // "paid" = confirmed immediately (cards, most methods).
@@ -33,8 +37,12 @@ async function dispatchEvent(event: Stripe.Event): Promise<void> {
       // debits) is still settling — wait for async_payment_succeeded/failed
       // below rather than confirming now.
       if (session.payment_status === "paid") {
+        // Mark the payment as paid in the database using the service layer function.
+        // The markPaymentPaid function updates the payment record with the Stripe Checkout Session ID, 
+        // Payment Intent ID, and Customer ID (if available).
         await markPaymentPaid(
           session.id,
+          
           session.payment_intent as string,
           (session.customer as string) ?? null
         );
@@ -109,6 +117,10 @@ export const handleStripeWebhook = async (req: StripeWebhookRequest, res: Respon
 
   let shouldProcess = true;
   try {
+    // Record the event in the idempotency ledger. If this is a duplicate
+    // delivery, the insert will throw a duplicate-key error (E11000) and
+    // we'll check the existing record's status to decide whether to skip
+    // or retry processing.
     await paymentRepository.recordWebhookEvent(
       event.id,
       event.type,
@@ -117,9 +129,17 @@ export const handleStripeWebhook = async (req: StripeWebhookRequest, res: Respon
     );
   } catch (err: any) {
     if (err?.code === 11000) {
+      // Duplicate-key error — Stripe is retrying a webhook delivery we already
+      // recorded. Check the existing record's status to decide whether to skip or retry processing.
+      console.warn(
+        `[webhook] Duplicate event record for ${event.id} — checking status`
+      );
+      // Look up the existing record to see if it was already processed successfully.
       const existing = await paymentRepository.findWebhookEventByStripeId(
         event.id
       );
+      // If the existing record's status is "processed", we can safely skip reprocessing and return a 200 response to Stripe.
+      //  If the status is "received" or "failed", we should retry processing the event.
       if (existing?.status === "processed") {
         // Genuine replay of an event we already fully handled — Stripe's
         // at-least-once delivery. Ack and stop, do NOT reprocess.
@@ -135,7 +155,12 @@ export const handleStripeWebhook = async (req: StripeWebhookRequest, res: Respon
 
   if (shouldProcess) {
     try {
+      // Dispatch the event to the appropriate handler based on its type. 
+      // The dispatchEvent function contains the logic for handling different Stripe event types, such as checkout.
+      // session.completed, checkout.session.async_payment_succeeded, and checkout.session.async_payment_failed. 
+      // Each case in the switch statement calls the corresponding service function to update the payment status in the database.
       await dispatchEvent(event);
+      // Mark the event as processed in the idempotency ledger after successful processing.
       await paymentRepository.markWebhookEventProcessed(event.id);
     } catch (err: any) {
       await paymentRepository.markWebhookEventFailed(
