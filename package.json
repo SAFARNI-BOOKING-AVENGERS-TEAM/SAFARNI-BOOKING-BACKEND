@@ -7,7 +7,7 @@
     "dev": "nodemon server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed:test": "ts-node scripts/seed-test-data.ts",
+    "seed:test": "ts-node --transpile-only scripts/seed-test-data.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:api": "npx newman run tours_api_tests.postman_collection.json"
   },
