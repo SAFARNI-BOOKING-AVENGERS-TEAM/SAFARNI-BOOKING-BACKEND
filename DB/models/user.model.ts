@@ -22,11 +22,7 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
-    name: {
-      type: String,
-      required: [true, "Name is required"],
-      trim: true,
-    },
+    name: { type: String, required: [true, "Name is required"], trim: true },
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -40,37 +36,31 @@ const userSchema = new Schema<IUser>(
       required: [true, "Password is required"],
       select: false,
     },
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
-    role: {
-      type: String,
-      enum: ["user", "provider", "admin"],
-      default: "user",
-    },
-    providerType: {
-      type: String,
-      enum: ["travel", "telecom", "both"],
-    },
-    passwordResetToken: String,
-    passwordResetExpires: Date,
-    emailVerificationToken: String,
-    emailVerificationExpires: Date,
-    refreshTokenVersion: {
-      type: Number,
-      default: 0,
-    },
-    profilePicture: {
-      url: String,
-      publicId: String,
-    },
+    isVerified: { type: Boolean, default: false },
+    role: { type: String, enum: ["user", "provider", "admin"], default: "user" },
+    providerType: { type: String, enum: ["travel", "telecom", "both"] },
+    passwordResetToken: { type: String, select: false },
+    passwordResetExpires: { type: Date, select: false },
+    emailVerificationToken: { type: String, select: false },
+    emailVerificationExpires: { type: Date, select: false },
+    refreshTokenVersion: { type: Number, default: 0, select: false },
+    profilePicture: { url: String, publicId: String },
   },
   {
     timestamps: true,
+    toJSON: {
+      transform: (_doc, ret: any) => {
+        delete ret.password;
+        delete ret.passwordResetToken;
+        delete ret.passwordResetExpires;
+        delete ret.emailVerificationToken;
+        delete ret.emailVerificationExpires;
+        delete ret.refreshTokenVersion;
+        return ret;
+      },
+    },
   }
 );
 
 const UserModel = model<IUser>("User", userSchema);
-
 export default UserModel;
