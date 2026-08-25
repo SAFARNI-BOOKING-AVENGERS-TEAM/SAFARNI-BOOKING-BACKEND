@@ -7,6 +7,7 @@
     "dev": "nodemon server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "seed:test": "ts-node scripts/seed-test-data.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:api": "npx newman run tours_api_tests.postman_collection.json"
   },
@@ -21,7 +22,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.0",
-    "helmet": "^8.1.0",
+    "helmet": "^8.1.5",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.0.2",
     "multer": "^2.2.0",
