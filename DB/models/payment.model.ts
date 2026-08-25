@@ -14,7 +14,7 @@ export interface IPayment extends Document {
   esimOrderId?: string;
   amount: number;
   currency: string;
-  stripePaymentIntentId?: string;
+  stripePaymentIntentId: string;
   stripeCheckoutSessionId?: string;
   status: "pending" | "succeeded" | "failed";
   refunds: IPaymentRefund[];
@@ -28,7 +28,10 @@ const paymentSchema = new Schema<IPayment>(
     esimOrderId: { type: String },
     amount: { type: Number, required: true },
     currency: { type: String, required: true, default: "usd" },
-    stripePaymentIntentId: { type: String },
+    // Keep the original required+unique index shape for compatibility with
+    // existing local databases. Hosted Checkout uses a unique checkout:<cs_...>
+    // placeholder until Stripe exposes the real pi_... identifier.
+    stripePaymentIntentId: { type: String, required: true, unique: true },
     stripeCheckoutSessionId: { type: String },
     status: {
       type: String,
@@ -48,7 +51,6 @@ const paymentSchema = new Schema<IPayment>(
 );
 
 paymentSchema.index({ userId: 1 });
-paymentSchema.index({ stripePaymentIntentId: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ stripeCheckoutSessionId: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ bookingId: 1, status: 1 });
 paymentSchema.index({ packageBookingId: 1, status: 1 });
