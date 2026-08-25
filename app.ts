@@ -44,6 +44,10 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(express.static("public"));
+// When Cloudinary is not configured, Multer stores development uploads here.
+// Expose only this dedicated upload directory so returned image URLs are
+// browser-accessible without exposing the rest of the project filesystem.
+app.use("/uploads", express.static("uploads"));
 app.use(globalLimiter);
 app.use(auditLogMiddleware);
 
