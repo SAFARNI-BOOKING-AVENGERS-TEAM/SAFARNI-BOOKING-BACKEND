@@ -3,6 +3,7 @@ import cloudinary from "../utils/cloudinary/cloudinary";
 import fs from "fs";
 import path from "path";
 import type { Request } from "express";
+import { uploadsDir } from "../utils/uploads/uploadPath";
 
 const allowedMimeTypes = new Set(["image/jpeg", "image/png"]);
 const maxFileSize = 5 * 1024 * 1024;
@@ -66,12 +67,12 @@ let storage: multer.StorageEngine;
 if (hasCloudinaryConfig) {
   storage = new CloudinaryMulterStorage();
 } else {
-  if (!fs.existsSync("./uploads")) {
-    fs.mkdirSync("./uploads", { recursive: true });
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
   storage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, "./uploads"),
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
