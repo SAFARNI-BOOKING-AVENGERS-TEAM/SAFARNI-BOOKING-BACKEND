@@ -1,11 +1,12 @@
 import ESIMPlanModel from "../../DB/models/esimPlan.model";
+import ESIMOrderModel from "../../DB/models/esimOrder.model";
+import PaymentModel from "../../DB/models/payment.model";
 import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
 } from "../../utils/response/error.response";
 import { sendNotification } from "../../utils/notifications/sendNotification";
-import ESIMOrderModel from "../../DB/models/esimOrder.model";
 import { getESIMProvider } from "./providers/esim.provider.factory";
 
 export const createESIMPlan = async (payload: any, userId: string, userRole: string) => {
@@ -116,8 +117,7 @@ export const updateESIMPlanStatus = async (
   return plan;
 };
 
-// Creates a payable eSIM order only. Provisioning is intentionally deferred
-// until Stripe has verified that payment succeeded.
+// Creates a payable order only. Provisioning begins only after Stripe success.
 export const purchaseESIM = async (userId: string, planId: string, packageBookingId?: string) => {
   const plan = await ESIMPlanModel.findById(planId);
   if (!plan) throw new NotFoundException("eSIM plan not found");
@@ -134,11 +134,10 @@ export const purchaseESIM = async (userId: string, planId: string, packageBookin
     ...(packageBookingId && { packageBookingId }),
   });
 
-  return order;
+  return { ...order.toObject(), paymentStatus: "unpaid" as const };
 };
 
-// Called only by the payment layer after Stripe confirms payment. Idempotent so
-// webhook retries or a success-page verification cannot provision twice.
+// Payment layer only. Idempotent to tolerate webhook/session verification retries.
 export const fulfillPaidESIMOrder = async (orderId: string) => {
   const order = await ESIMOrderModel.findById(orderId);
   if (!order) throw new NotFoundException("eSIM order not found");
@@ -176,8 +175,34 @@ export const fulfillPaidESIMOrder = async (orderId: string) => {
   }
 };
 
+const latestPaymentStatusByOrder = async (userId: string, orderIds: string[]) => {
+  if (!orderIds.length) return new Map<string, string>();
+
+  const payments = await PaymentModel.find({
+    userId,
+    esimOrderId: { $in: orderIds },
+  })
+    .sort({ createdAt: -1 })
+    .select("esimOrderId status")
+    .lean();
+
+  const statusMap = new Map<string, string>();
+  for (const payment of payments) {
+    if (payment.esimOrderId && !statusMap.has(payment.esimOrderId)) {
+      statusMap.set(payment.esimOrderId, payment.status);
+    }
+  }
+  return statusMap;
+};
+
 export const getMyESIMOrders = async (userId: string) => {
-  return await ESIMOrderModel.find({ userId }).sort({ createdAt: -1 }).populate("planId");
+  const orders = await ESIMOrderModel.find({ userId }).sort({ createdAt: -1 }).populate("planId");
+  const statusMap = await latestPaymentStatusByOrder(userId, orders.map((order) => order._id.toString()));
+
+  return orders.map((order) => ({
+    ...order.toObject(),
+    paymentStatus: statusMap.get(order._id.toString()) || "unpaid",
+  }));
 };
 
 export const getESIMOrderDetails = async (orderId: string, userId: string) => {
@@ -197,7 +222,12 @@ export const getESIMOrderDetails = async (orderId: string, userId: string) => {
     await order.save();
   }
 
-  return order;
+  const payment = await PaymentModel.findOne({ userId, esimOrderId: orderId })
+    .sort({ createdAt: -1 })
+    .select("status")
+    .lean();
+
+  return { ...order.toObject(), paymentStatus: payment?.status || "unpaid" };
 };
 
 export const activateESIM = async (orderId: string, userId: string) => {
