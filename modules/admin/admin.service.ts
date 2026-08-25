@@ -203,6 +203,14 @@ export const updateAdminBookingStatus = async (id: string, status: string) => {
   if (!["pending", "confirmed", "cancelled"].includes(status)) {
     throw new BadRequestException("Invalid booking status");
   }
+
+  if (status === "confirmed") {
+    const paid = await PaymentModel.exists({ bookingId: id, status: "succeeded" });
+    if (!paid) {
+      throw new BadRequestException("A booking can only be confirmed after a succeeded payment");
+    }
+  }
+
   const booking = await BookingModel.findByIdAndUpdate(id, { status }, { new: true, runValidators: true })
     .populate("userId", "name email")
     .lean();
