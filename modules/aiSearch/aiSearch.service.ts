@@ -169,7 +169,7 @@ const getSafeBookingUrl = (value: unknown): string | null => {
 };
 
 const normalizeResults = (raw: any, intent: FlightIntent): ExternalFlightResult[] => {
-  const rows = Array.isArray(raw)
+  const rows: any[] = Array.isArray(raw)
     ? raw
     : Array.isArray(raw?.data)
       ? raw.data
@@ -177,8 +177,8 @@ const normalizeResults = (raw: any, intent: FlightIntent): ExternalFlightResult[
         ? raw.results
         : [];
 
-  const normalized = rows
-    .map((row: any) => {
+  const normalized: ExternalFlightResult[] = rows
+    .map<ExternalFlightResult | null>((row: any) => {
       const firstSegment = Array.isArray(row?.segments) ? row.segments[0] : null;
       const carrier = firstSegment?.marketing_carrier || null;
       const price = Number(row?.price);
@@ -195,7 +195,7 @@ const normalizeResults = (raw: any, intent: FlightIntent): ExternalFlightResult[
         departure: typeof row?.departure === "string" ? row.departure : null,
         arrival: typeof row?.arrival === "string" ? row.arrival : null,
         durationMinutes: Number.isFinite(Number(row?.duration_minutes)) ? Number(row.duration_minutes) : null,
-        stops: Number.isFinite(stops) ? stops : null,
+        stops: stops !== null && Number.isFinite(stops) ? stops : null,
         airlineName:
           typeof carrier?.name === "string"
             ? carrier.name
@@ -210,18 +210,18 @@ const normalizeResults = (raw: any, intent: FlightIntent): ExternalFlightResult[
               : null,
         flightNumber: firstSegment?.flight_number == null ? null : String(firstSegment.flight_number),
         bookingUrl: getSafeBookingUrl(row?.booking_url),
-      } satisfies ExternalFlightResult;
+      };
     })
-    .filter((item: ExternalFlightResult | null): item is ExternalFlightResult => Boolean(item));
+    .filter((item: ExternalFlightResult | null): item is ExternalFlightResult => item !== null);
 
-  const filtered = intent.nonstopOnly
-    ? normalized.filter((flight) => flight.stops === 0)
+  const filtered: ExternalFlightResult[] = intent.nonstopOnly
+    ? normalized.filter((flight: ExternalFlightResult) => flight.stops === 0)
     : normalized;
 
   return filtered
-    .sort((a, b) => a.price - b.price)
+    .sort((a: ExternalFlightResult, b: ExternalFlightResult) => a.price - b.price)
     .slice(0, intent.limit)
-    .map((flight, index) => ({ ...flight, rank: index + 1 }));
+    .map((flight: ExternalFlightResult, index: number) => ({ ...flight, rank: index + 1 }));
 };
 
 const searchN8n = async (intent: FlightIntent) => {
