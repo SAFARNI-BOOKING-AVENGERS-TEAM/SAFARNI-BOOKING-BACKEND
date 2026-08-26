@@ -307,13 +307,51 @@ export const finalizeCheckoutSession = async (
 };
 
 export const verifyCheckoutSession = async (userId: string, sessionId: string) => {
-  const stripeClient = getStripeClient();
-  const session = await stripeClient.checkout.sessions.retrieve(sessionId);
   const payment = await PaymentModel.findOne({ stripeCheckoutSessionId: sessionId });
   if (!payment) throw new NotFoundException("Payment record not found");
   if (payment.userId.toString() !== userId.toString()) {
     throw new ForbiddenException("You are not authorized to view this checkout session");
   }
+
+  // If a verified webhook already finalized this payment, do not block the
+  // browser success page on a second Stripe API round-trip. The local succeeded
+  // state can only be reached through verified Stripe confirmation.
+  if (payment.status === "succeeded") {
+    let fulfillmentStatus: string = "succeeded";
+
+    if (payment.esimOrderId) {
+      const order = await ESIMOrderModel.findById(payment.esimOrderId).select("status").lean();
+      fulfillmentStatus = order?.status || "succeeded";
+    } else {
+      const bookingQuery = payment.bookingId
+        ? { _id: payment.bookingId }
+        : { packageBookingId: payment.packageBookingId };
+      const bookings = await BookingModel.find(bookingQuery).select("status").lean();
+
+      if (bookings.length > 0 && bookings.every((booking) => booking.status === "confirmed")) {
+        fulfillmentStatus = "confirmed";
+      } else {
+        const repaired = await finalizePaymentRecord(payment, true);
+        fulfillmentStatus = repaired.fulfillmentStatus || "succeeded";
+      }
+    }
+
+    return {
+      sessionId,
+      sessionStatus: "complete",
+      paymentStatus: "paid",
+      paymentRecordStatus: "succeeded" as const,
+      fulfillmentStatus,
+      amount: payment.amount,
+      currency: payment.currency,
+      bookingId: payment.bookingId,
+      packageBookingId: payment.packageBookingId,
+      esimOrderId: payment.esimOrderId,
+    };
+  }
+
+  const stripeClient = getStripeClient();
+  const session = await stripeClient.checkout.sessions.retrieve(sessionId);
   if (session.metadata?.userId && session.metadata.userId !== userId.toString()) {
     throw new ForbiddenException("Checkout session does not belong to this user");
   }
