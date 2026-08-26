@@ -1,0 +1,218 @@
+{
+  "info": {
+    "_postman_id": "d6f4b9d3-86ad-4d3a-b38d-5d834df7b180",
+    "name": "SAFARNI Backend API - Verified Inventory",
+    "description": "Generated from the current security/hardening-v1 Express controllers and request schemas. Contains the 96 canonical route operations documented in docs/API_REFERENCE.md. The complete hotel and flight routers are additionally aliased under /api/hotels and /api/flights; aliases are intentionally not duplicated here. Protected requests use the server's HTTP-only cookie authentication; log in first and let Postman's cookie jar retain access_token/refresh_token. This collection is an API request inventory, not a claim that every request has been executed successfully in the current environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key":"baseUrl","value":"http://localhost:5000"},
+    {"key":"loginEmail","value":"traveler@safarni.test"},
+    {"key":"loginPassword","value":"SafarniTest123!","type":"secret"},
+    {"key":"resetToken","value":"replace_reset_token"},
+    {"key":"verifyToken","value":"replace_verify_token"},
+    {"key":"providerId","value":"replace_provider_id"},
+    {"key":"tourId","value":"replace_tour_id"},
+    {"key":"reviewUserId","value":"replace_review_user_id"},
+    {"key":"hotelId","value":"replace_hotel_id"},
+    {"key":"roomId","value":"replace_room_id"},
+    {"key":"bookingId","value":"replace_booking_id"},
+    {"key":"carId","value":"replace_car_id"},
+    {"key":"flightId","value":"replace_flight_id"},
+    {"key":"notificationId","value":"replace_notification_id"},
+    {"key":"favoriteItemId","value":"replace_item_id"},
+    {"key":"packageId","value":"replace_package_id"},
+    {"key":"userId","value":"replace_user_id"},
+    {"key":"serviceType","value":"tours"},
+    {"key":"serviceId","value":"replace_service_id"},
+    {"key":"esimPlanId","value":"replace_esim_plan_id"},
+    {"key":"esimOrderId","value":"replace_esim_order_id"},
+    {"key":"packageBookingId","value":"replace_package_booking_id"},
+    {"key":"checkoutSessionId","value":"replace_checkout_session_id"},
+    {"key":"paymentIntentId","value":"replace_payment_intent_id"}
+  ],
+  "item": [
+    {
+      "name":"System",
+      "item":[
+        {"name":"API Root / Health","request":{"method":"GET","header":[],"url":"{{baseUrl}}/"}}
+      ]
+    },
+    {
+      "name":"Authentication & Provider Accounts",
+      "item":[
+        {"name":"Request Password Reset","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"email\": \"{{loginEmail}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/forgot-password/request"}},
+        {"name":"Confirm Password Reset","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"password\": \"NewPassword123\",\n  \"confirmPassword\": \"NewPassword123\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/forgot-password/confirm/{{resetToken}}"}},
+        {"name":"Sign Up","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"SAFARNI Demo User\",\n  \"email\": \"new.user@example.com\",\n  \"password\": \"Password123\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/signup"}},
+        {"name":"Login","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"{{loginPassword}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/login"}},
+        {"name":"Refresh Session","request":{"method":"POST","header":[],"url":"{{baseUrl}}/auth/refresh-token"}},
+        {"name":"Logout","request":{"method":"POST","header":[],"url":"{{baseUrl}}/auth/logout"}},
+        {"name":"Verify Email","request":{"method":"POST","header":[],"url":"{{baseUrl}}/auth/verify-email/{{verifyToken}}"}},
+        {"name":"Create Service Provider","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"Demo Provider\",\n  \"email\": \"provider.new@example.com\",\n  \"password\": \"Password123\",\n  \"providerType\": \"travel\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/service-providers"}},
+        {"name":"List Service Providers","request":{"method":"GET","header":[],"url":"{{baseUrl}}/auth/service-providers"}},
+        {"name":"Get Service Provider","request":{"method":"GET","header":[],"url":"{{baseUrl}}/auth/service-providers/{{providerId}}"}},
+        {"name":"Replace Service Provider","request":{"method":"PUT","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"Updated Provider\",\n  \"email\": \"provider.updated@example.com\",\n  \"providerType\": \"both\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/service-providers/{{providerId}}"}},
+        {"name":"Patch Service Provider","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"providerType\": \"both\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/auth/service-providers/{{providerId}}"}},
+        {"name":"Delete Service Provider","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/auth/service-providers/{{providerId}}"}}
+      ]
+    },
+    {
+      "name":"Tours",
+      "item":[
+        {"name":"List Tours","request":{"method":"GET","header":[],"url":"{{baseUrl}}/tours"}},
+        {"name":"Get Tour","request":{"method":"GET","header":[],"url":"{{baseUrl}}/tours/{{tourId}}"}},
+        {"name":"Create Tour","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"title\": \"Cairo Discovery Tour\",\n  \"slug\": \"cairo-discovery-tour\",\n  \"summary\": \"A guided cultural journey through Cairo landmarks.\",\n  \"mainImage\": \"https://example.com/cairo.jpg\",\n  \"duration\": \"1 day\",\n  \"locations\": [{\"name\":\"Cairo\",\"country\":\"Egypt\",\"city\":\"Cairo\"}],\n  \"priceTiers\": [{\"type\":\"Standard\",\"price\":75}],\n  \"languages\": [\"English\",\"Arabic\"],\n  \"providerInfo\": {\"name\":\"SAFARNI Travel Provider\"}\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/tours/createTour"}},
+        {"name":"Update Tour","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"summary\": \"Updated Cairo cultural tour description.\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/tours/updateTour/{{tourId}}"}},
+        {"name":"Delete Tour","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/tours/deleteTour/{{tourId}}"}},
+        {"name":"Approve / Reject Tour","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/tours/admin/tours/{{tourId}}/status"}},
+        {"name":"Add or Update Tour Review","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"rating\": 5,\n  \"comment\": \"Excellent experience\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/tours/{{tourId}}/reviews"}},
+        {"name":"List Tour Reviews","request":{"method":"GET","header":[],"url":"{{baseUrl}}/tours/{{tourId}}/reviews"}},
+        {"name":"Delete Tour Review","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/tours/{{tourId}}/reviews/{{reviewUserId}}"}}
+      ]
+    },
+    {
+      "name":"Hotels & Rooms",
+      "item":[
+        {"name":"List Hotels","request":{"method":"GET","header":[],"url":"{{baseUrl}}/hotels"}},
+        {"name":"Get Hotel","request":{"method":"GET","header":[],"url":"{{baseUrl}}/hotels/{{hotelId}}"}},
+        {"name":"Create Hotel","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"SAFARNI Nile Hotel\",\n  \"description\": \"Demo hotel\",\n  \"location\": {\"city\":\"Cairo\",\"address\":\"Downtown Cairo\"},\n  \"amenities\": [\"WiFi\"]\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/hotels/admin/hotels"}},
+        {"name":"Update Hotel","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"description\": \"Updated hotel description\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/hotels/admin/hotels/{{hotelId}}"}},
+        {"name":"Delete Hotel","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/hotels/admin/hotels/{{hotelId}}"}},
+        {"name":"Create Room","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"Deluxe Room\",\n  \"occupancy\": {\"adults\":2,\"children\":1},\n  \"pricePerNight\": 120,\n  \"refundable\": true\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/hotels/admin/{{hotelId}}/rooms"}},
+        {"name":"Upload Hotel Images","request":{"method":"POST","header":[],"body":{"mode":"formdata","formdata":[{"key":"images","type":"file","src":[]}]},"url":"{{baseUrl}}/hotels/admin/{{hotelId}}/images"}},
+        {"name":"Update Room","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"pricePerNight\": 135\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/hotels/admin/rooms/{{roomId}}"}},
+        {"name":"Delete Room","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/hotels/admin/rooms/{{roomId}}"}},
+        {"name":"Approve / Reject Hotel","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/hotels/admin/hotels/{{hotelId}}/status"}}
+      ]
+    },
+    {
+      "name":"Bookings",
+      "item":[
+        {"name":"Create Booking","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"category\": \"tours\",\n  \"itemId\": \"{{tourId}}\",\n  \"startDate\": \"2026-09-10T00:00:00.000Z\",\n  \"endDate\": \"2026-09-11T00:00:00.000Z\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/bookings"}},
+        {"name":"My Bookings","request":{"method":"GET","header":[],"url":"{{baseUrl}}/bookings/my-bookings"}},
+        {"name":"Get Booking","request":{"method":"GET","header":[],"url":"{{baseUrl}}/bookings/{{bookingId}}"}},
+        {"name":"Cancel Booking","request":{"method":"PATCH","header":[],"url":"{{baseUrl}}/bookings/{{bookingId}}/cancel"}},
+        {"name":"Update Booking Status","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"confirmed\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/bookings/{{bookingId}}/status"}},
+        {"name":"Stats by Category","request":{"method":"GET","header":[],"url":"{{baseUrl}}/bookings/admin/stats/by-category"}},
+        {"name":"Revenue by Category","request":{"method":"GET","header":[],"url":"{{baseUrl}}/bookings/admin/stats/revenue"}},
+        {"name":"Stats by Status","request":{"method":"GET","header":[],"url":"{{baseUrl}}/bookings/admin/stats/by-status"}}
+      ]
+    },
+    {
+      "name":"Cars",
+      "item":[
+        {"name":"List Cars","request":{"method":"GET","header":[],"url":"{{baseUrl}}/cars?city=Cairo&available=true"}},
+        {"name":"Get Car","request":{"method":"GET","header":[],"url":"{{baseUrl}}/cars/{{carId}}"}},
+        {"name":"Create Car","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"brand\": \"Toyota\",\n  \"model\": \"Corolla\",\n  \"year\": 2025,\n  \"type\": \"Sedan\",\n  \"transmission\": \"Automatic\",\n  \"fuelType\": \"Petrol\",\n  \"seats\": 5,\n  \"pricePerDay\": 60,\n  \"location\": {\"city\":\"Cairo\"}\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/cars/createCar"}},
+        {"name":"Update Car","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"pricePerDay\": 65\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/cars/updateCar/{{carId}}"}},
+        {"name":"Delete Car","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/cars/deleteCar/{{carId}}"}},
+        {"name":"Approve / Reject Car","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/cars/admin/{{carId}}/status"}}
+      ]
+    },
+    {
+      "name":"Flights",
+      "item":[
+        {"name":"List Flights","request":{"method":"GET","header":[],"url":"{{baseUrl}}/flights"}},
+        {"name":"Get Flight","request":{"method":"GET","header":[],"url":"{{baseUrl}}/flights/{{flightId}}"}},
+        {"name":"Create Flight","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"airline\": \"EgyptAir\",\n  \"flightNumber\": \"MS777\",\n  \"departureAirport\": \"CAI\",\n  \"arrivalAirport\": \"CDG\",\n  \"departureTime\": \"2026-09-20T08:00:00.000Z\",\n  \"arrivalTime\": \"2026-09-20T12:30:00.000Z\",\n  \"price\": 350,\n  \"availableSeats\": 40,\n  \"class\": \"Economy\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/flights/createFlight"}},
+        {"name":"Update Flight","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"price\": 370\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/flights/updateFlight/{{flightId}}"}},
+        {"name":"Delete Flight","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/flights/deleteFlight/{{flightId}}"}},
+        {"name":"Update Flight Status","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/flights/updateFlightStatus/{{flightId}}"}}
+      ]
+    },
+    {
+      "name":"Notifications",
+      "item":[
+        {"name":"List Notifications","request":{"method":"GET","header":[],"url":"{{baseUrl}}/notifications?page=1&limit=20"}},
+        {"name":"Mark Notification Read","request":{"method":"PATCH","header":[],"url":"{{baseUrl}}/notifications/{{notificationId}}/read"}},
+        {"name":"Mark All Notifications Read","request":{"method":"PATCH","header":[],"url":"{{baseUrl}}/notifications/read-all"}}
+      ]
+    },
+    {
+      "name":"Favorites",
+      "item":[
+        {"name":"Add Favorite","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"category\": \"tours\",\n  \"itemId\": \"{{favoriteItemId}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/favorites"}},
+        {"name":"Remove Favorite","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/favorites/tours/{{favoriteItemId}}"}},
+        {"name":"List Favorites","request":{"method":"GET","header":[],"url":"{{baseUrl}}/favorites"}}
+      ]
+    },
+    {
+      "name":"Packages",
+      "item":[
+        {"name":"List Packages","request":{"method":"GET","header":[],"url":"{{baseUrl}}/packages"}},
+        {"name":"Get Package","request":{"method":"GET","header":[],"url":"{{baseUrl}}/packages/{{packageId}}"}},
+        {"name":"Create Package","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"title\": \"Cairo Explorer Package\",\n  \"items\": [\n    {\"category\":\"hotels\",\"itemId\":\"{{hotelId}}\",\"order\":0},\n    {\"category\":\"tours\",\"itemId\":\"{{tourId}}\",\"order\":1}\n  ],\n  \"discountPercentage\": 10\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/packages"}},
+        {"name":"Approve / Reject Package","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/packages/{{packageId}}/status"}},
+        {"name":"Book Package","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"items\": [\n    {\"category\":\"tours\",\"itemId\":\"{{tourId}}\",\"startDate\":\"2026-09-10\",\"endDate\":\"2026-09-11\"}\n  ]\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/packages/{{packageId}}/book"}},
+        {"name":"Update Featured Status","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"featured\": true\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/packages/{{packageId}}/featured"}}
+      ]
+    },
+    {
+      "name":"User Profile",
+      "item":[
+        {"name":"My Profile","request":{"method":"GET","header":[],"url":"{{baseUrl}}/users/my-profile"}},
+        {"name":"Upload Profile Picture","request":{"method":"POST","header":[],"body":{"mode":"formdata","formdata":[{"key":"image","type":"file","src":[]}]},"url":"{{baseUrl}}/users/upload-profile-picture"}},
+        {"name":"Update Profile Info","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"Updated Name\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/users/update-profile-info"}}
+      ]
+    },
+    {
+      "name":"Admin",
+      "item":[
+        {"name":"Dashboard Stats","request":{"method":"GET","header":[],"url":"{{baseUrl}}/admin/dashboard/stats"}},
+        {"name":"List Users","request":{"method":"GET","header":[],"url":"{{baseUrl}}/admin/users"}},
+        {"name":"Update User Role","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"role\": \"provider\",\n  \"providerType\": \"travel\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/admin/users/{{userId}}/role"}},
+        {"name":"List Services","request":{"method":"GET","header":[],"url":"{{baseUrl}}/admin/services"}},
+        {"name":"Update Service Status","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/admin/services/{{serviceType}}/{{serviceId}}/status"}},
+        {"name":"List Bookings","request":{"method":"GET","header":[],"url":"{{baseUrl}}/admin/bookings"}},
+        {"name":"Update Admin Booking Status","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"confirmed\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/admin/bookings/{{bookingId}}/status"}},
+        {"name":"Audit Logs","request":{"method":"GET","header":[],"url":"{{baseUrl}}/admin/audit-logs"}}
+      ]
+    },
+    {
+      "name":"Provider Dashboard",
+      "item":[
+        {"name":"Provider Dashboard Stats","request":{"method":"GET","header":[],"url":"{{baseUrl}}/provider/dashboard/stats"}},
+        {"name":"Provider Operations","request":{"method":"GET","header":[],"url":"{{baseUrl}}/provider/operations"}}
+      ]
+    },
+    {
+      "name":"eSIM",
+      "item":[
+        {"name":"List eSIM Plans","request":{"method":"GET","header":[],"url":"{{baseUrl}}/esim/plans"}},
+        {"name":"Get eSIM Plan","request":{"method":"GET","header":[],"url":"{{baseUrl}}/esim/plans/{{esimPlanId}}"}},
+        {"name":"Create eSIM Plan","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"name\": \"Egypt 10GB\",\n  \"country\": \"Egypt\",\n  \"dataAmount\": 10,\n  \"dataUnit\": \"GB\",\n  \"validityDays\": 30,\n  \"price\": 25,\n  \"currency\": \"USD\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/esim/plans"}},
+        {"name":"Update eSIM Plan","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"price\": 24\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/esim/plans/{{esimPlanId}}"}},
+        {"name":"Delete eSIM Plan","request":{"method":"DELETE","header":[],"url":"{{baseUrl}}/esim/plans/{{esimPlanId}}"}},
+        {"name":"Approve / Reject eSIM Plan","request":{"method":"PATCH","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"status\": \"approved\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/esim/plans/{{esimPlanId}}/status"}},
+        {"name":"Create eSIM Order","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"planId\": \"{{esimPlanId}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/esim/orders"}},
+        {"name":"My eSIM Orders","request":{"method":"GET","header":[],"url":"{{baseUrl}}/esim/orders/my-orders"}},
+        {"name":"Get eSIM Order","request":{"method":"GET","header":[],"url":"{{baseUrl}}/esim/orders/{{esimOrderId}}"}},
+        {"name":"Retry eSIM Provisioning","request":{"method":"POST","header":[],"url":"{{baseUrl}}/esim/orders/{{esimOrderId}}/retry-provision"}},
+        {"name":"Activate eSIM","request":{"method":"PATCH","header":[],"url":"{{baseUrl}}/esim/orders/{{esimOrderId}}/activate"}}
+      ]
+    },
+    {
+      "name":"Payments",
+      "item":[
+        {"name":"Stripe Diagnostics","request":{"method":"GET","header":[],"url":"{{baseUrl}}/payments/status"}},
+        {"name":"Create Checkout Session","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"bookingId\": \"{{bookingId}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/payments/checkout-session"}},
+        {"name":"Verify Checkout Session","request":{"method":"GET","header":[],"url":"{{baseUrl}}/payments/checkout-session/{{checkoutSessionId}}"}},
+        {"name":"Create Payment Intent","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"bookingId\": \"{{bookingId}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/payments/create-intent"}},
+        {"name":"Confirm Payment","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"paymentIntentId\": \"{{paymentIntentId}}\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/payments/confirm"}}
+      ]
+    },
+    {
+      "name":"Ask SAFARNI AI",
+      "item":[
+        {"name":"AI Flight Search","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"prompt\": \"Find the 5 cheapest flights from Cairo to Paris next Friday\"\n}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/ai-search/flights"}},
+        {"name":"AI Search Diagnostics","request":{"method":"GET","header":[],"url":"{{baseUrl}}/ai-search/status"}}
+      ]
+    },
+    {
+      "name":"Webhooks",
+      "item":[
+        {"name":"Stripe Webhook (requires real Stripe signature)","request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"},{"key":"stripe-signature","value":"replace_with_real_stripe_signature"}],"body":{"mode":"raw","raw":"{}","options":{"raw":{"language":"json"}}},"url":"{{baseUrl}}/webhooks/stripe","description":"This request cannot be validated with an arbitrary signature. Use Stripe CLI or a real Stripe webhook delivery so the raw body and stripe-signature header match."}}
+      ]
+    }
+  ]
+}
