@@ -1,0 +1,95 @@
+{
+  "name": "SAFARNI - Live Flight Search v2",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "safarni-flight-search-v2",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-160, 0],
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const expected = $env.N8N_WEBHOOK_SECRET || '';\nconst received = $json.headers?.['x-safarni-webhook-secret'] || '';\nif (expected && received !== expected) {\n  throw new Error('Unauthorized SAFARNI webhook request');\n}\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [64, 0],
+      "name": "Verify SAFARNI Request"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "api_key", "value": "={{ $env.FLIGHTAPI_KEY }}", "type": "string" },
+            { "name": "departure_airport_code", "value": "={{ $json.query.from }}", "type": "string" },
+            { "name": "arrival_airport_code", "value": "={{ $json.query.to }}", "type": "string" },
+            { "name": "departure_date", "value": "={{ $json.query.date }}", "type": "string" },
+            { "name": "number_of_adults", "value": "={{ Number($json.query.nadults || 1) }}", "type": "number" },
+            { "name": "number_of_childrens", "value": "={{ Number($json.query.nchilds || 0) }}", "type": "number" },
+            { "name": "number_of_infants", "value": "={{ Number($json.query.ninfants || 0) }}", "type": "number" },
+            { "name": "cabin_class", "value": "={{ $json.query.class || 'Economy' }}", "type": "string" },
+            { "name": "currency", "value": "={{ $json.query.currency || 'USD' }}", "type": "string" },
+            { "name": "region", "value": "={{ $env.FLIGHT_SEARCH_REGION || 'DE' }}", "type": "string" },
+            { "name": "limit", "value": "={{ Math.min(Math.max(Number($json.query.limit || 5), 1), 10) }}", "type": "number" },
+            { "name": "nonstop_only", "value": "={{ String($json.query.nonstop || 'false') === 'true' }}", "type": "boolean" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [304, 0],
+      "name": "Search Parameters"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.flightapi.io/onewaytrip/{{$json.api_key}}/{{$json.departure_airport_code}}/{{$json.arrival_airport_code}}/{{$json.departure_date}}/{{$json.number_of_adults}}/{{$json.number_of_childrens}}/{{$json.number_of_infants}}/{{$json.cabin_class}}/{{$json.currency}}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "region", "value": "={{$json.region}}" }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [544, 0],
+      "name": "FlightAPI Search"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst itineraries = Array.isArray(data.itineraries) ? data.itineraries : [];\nconst legs = Array.isArray(data.legs) ? data.legs : [];\nconst segments = Array.isArray(data.segments) ? data.segments : [];\nconst carriers = Array.isArray(data.carriers) ? data.carriers : [];\nconst carrierMap = new Map(carriers.map(c => [String(c.id), c]));\nconst limit = Math.min(Math.max(Number($('Search Parameters').first().json.limit || 5), 1), 10);\nconst nonstopOnly = Boolean($('Search Parameters').first().json.nonstop_only);\nconst requestedCurrency = String($('Search Parameters').first().json.currency || 'USD');\nconst results = [];\n\nfor (const itinerary of itineraries) {\n  const legId = itinerary.leg_ids?.[0];\n  const leg = legs.find(l => l.id === legId);\n  if (!leg) continue;\n  const itinerarySegments = (leg.segment_ids || []).map(id => segments.find(s => s.id === id)).filter(Boolean);\n  const pricing = itinerary.pricing_options?.[0];\n  const price = pricing?.price || itinerary.cheapest_price || {};\n  const amount = Number(price.amount);\n  if (!Number.isFinite(amount)) continue;\n  results.push({\n    itinerary_id: itinerary.id,\n    price: amount,\n    currency: data.currency || requestedCurrency,\n    price_status: price.update_status || null,\n    quote_age_minutes: price.quote_age ?? null,\n    departure: leg.departure || null,\n    arrival: leg.arrival || null,\n    duration_minutes: leg.duration ?? null,\n    stops: leg.stop_count ?? null,\n    segments: itinerarySegments.map(s => ({\n      flight_number: s.marketing_flight_number || null,\n      departure: s.departure || null,\n      arrival: s.arrival || null,\n      duration_minutes: s.duration ?? null,\n      marketing_carrier_id: s.marketing_carrier_id ?? null,\n      operating_carrier_id: s.operating_carrier_id ?? null,\n      marketing_carrier: carrierMap.get(String(s.marketing_carrier_id)) || null\n    })),\n    booking_url: pricing?.items?.[0]?.url || null\n  });\n}\n\nconst eligible = nonstopOnly ? results.filter(f => Number(f.stops) === 0) : results;\neligible.sort((a, b) => a.price - b.price);\nreturn eligible.slice(0, limit).map((flight, index) => ({ json: { rank: index + 1, ...flight } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [784, 0],
+      "name": "Rank Live Results"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1024, 0],
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Verify SAFARNI Request", "type": "main", "index": 0 }]] },
+    "Verify SAFARNI Request": { "main": [[{ "node": "Search Parameters", "type": "main", "index": 0 }]] },
+    "Search Parameters": { "main": [[{ "node": "FlightAPI Search", "type": "main", "index": 0 }]] },
+    "FlightAPI Search": { "main": [[{ "node": "Rank Live Results", "type": "main", "index": 0 }]] },
+    "Rank Live Results": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "binaryMode": "separate" },
+  "tags": []
+}
