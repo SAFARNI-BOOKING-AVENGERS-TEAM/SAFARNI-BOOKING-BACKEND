@@ -36,13 +36,23 @@ function Invoke-Scan {
 
   $start = Get-Date
   $exitCode = 0
+  $previousErrorActionPreference = $ErrorActionPreference
+
   try {
+    # Windows PowerShell 5.1 materializes native stderr as NativeCommandError
+    # records. Docker/scanners legitimately write progress and INFO messages to
+    # stderr, so do not let those non-terminating records trigger the outer
+    # Stop preference. The scanner's real native exit code remains authoritative.
+    $ErrorActionPreference = "Continue"
     & $Action 2>&1 | Tee-Object -FilePath $file -Append | Out-Host
     if ($null -ne $LASTEXITCODE) { $exitCode = $LASTEXITCODE }
   }
   catch {
     $_ | Out-String | Tee-Object -FilePath $file -Append | Out-Host
     $exitCode = 1
+  }
+  finally {
+    $ErrorActionPreference = $previousErrorActionPreference
   }
 
   $duration = [math]::Round(((Get-Date)-$start).TotalSeconds,2)
@@ -56,8 +66,12 @@ function Invoke-Scan {
 }
 
 # Docker must be installed and the Linux engine must be running.
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 docker info *> $null
-if ($LASTEXITCODE -ne 0) {
+$dockerInfoExitCode = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorActionPreference
+if ($dockerInfoExitCode -ne 0) {
   throw "Docker engine is not available. Start Docker Desktop and rerun this script."
 }
 
@@ -67,9 +81,15 @@ if (-not (Test-Path $FrontendPath)) {
 
 Write-Host "Pulling pinned/official security scanner images..." -ForegroundColor Cyan
 # v8.30.0 is pinned deliberately; v8.30.1 has a reported secret-detection regression.
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 docker pull ghcr.io/gitleaks/gitleaks:v8.30.0 | Out-Host
+if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $previousErrorActionPreference; throw "Failed to pull Gitleaks scanner image" }
 docker pull semgrep/semgrep:latest | Out-Host
+if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $previousErrorActionPreference; throw "Failed to pull Semgrep scanner image" }
 docker pull aquasec/trivy:0.74.0 | Out-Host
+if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = $previousErrorActionPreference; throw "Failed to pull Trivy scanner image" }
+$ErrorActionPreference = $previousErrorActionPreference
 
 # Gitleaks scans committed git history. Current filesystem secrets are also covered by Trivy below.
 # --redact prevents leaked values from being printed into evidence files.
