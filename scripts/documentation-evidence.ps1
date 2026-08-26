@@ -231,17 +231,18 @@ if ($IncludeDocker) {
 }
 
 # Infra discovery: search the workspace, because SAFARNI DevOps files may live outside the application repositories.
+# Force discovery pipelines into arrays because StrictMode exposes .Count errors when PowerShell unwraps a single result.
 $tfDirs = @()
 $k8sCandidates = @()
 try {
-  $tfDirs = Get-ChildItem -Path $WorkspaceRoot -Recurse -File -Filter "*.tf" -ErrorAction SilentlyContinue |
-    Select-Object -ExpandProperty DirectoryName -Unique
-  $k8sCandidates = Get-ChildItem -Path $WorkspaceRoot -Recurse -File -Include "*.yaml","*.yml" -ErrorAction SilentlyContinue |
+  $tfDirs = @(Get-ChildItem -Path $WorkspaceRoot -Recurse -File -Filter "*.tf" -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty DirectoryName -Unique)
+  $k8sCandidates = @(Get-ChildItem -Path $WorkspaceRoot -Recurse -File -Include "*.yaml","*.yml" -ErrorAction SilentlyContinue |
     Where-Object {
       $text = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
       $text -match '(?m)^kind:\s*(Deployment|Service|Ingress|StatefulSet|ConfigMap|Secret)\s*$'
     } |
-    Select-Object -ExpandProperty FullName
+    Select-Object -ExpandProperty FullName)
 } catch {
   # Discovery failures are represented in summary below.
 }
