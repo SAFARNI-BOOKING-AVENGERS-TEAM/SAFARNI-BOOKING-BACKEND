@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: safarni-backend
+  namespace: safarni
+  labels:
+    app.kubernetes.io/name: safarni-backend
+    app.kubernetes.io/part-of: safarni
+spec:
+  type: ClusterIP
+  selector:
+    app: safarni-backend
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
