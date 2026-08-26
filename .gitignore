@@ -4,6 +4,7 @@ dist/
 coverage/
 config.bat
 uploads/
+documentation-evidence/
 .env
 .env.*
 !.env.example
