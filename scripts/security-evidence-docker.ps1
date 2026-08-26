@@ -66,16 +66,18 @@ if (-not (Test-Path $FrontendPath)) {
 }
 
 Write-Host "Pulling pinned/official security scanner images..." -ForegroundColor Cyan
-docker pull ghcr.io/gitleaks/gitleaks:v8.30.1 | Out-Host
+# v8.30.0 is pinned deliberately; v8.30.1 has a reported secret-detection regression.
+docker pull ghcr.io/gitleaks/gitleaks:v8.30.0 | Out-Host
 docker pull semgrep/semgrep:latest | Out-Host
 docker pull aquasec/trivy:0.74.0 | Out-Host
 
-# Gitleaks scans git history and working tree. --redact prevents leaked values from being printed into evidence files.
-Invoke-Scan -Name "Backend Gitleaks secret scan" -FileName "01-backend-gitleaks.txt" -Action {
-  docker run --rm -v "${BackendPath}:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 detect --source=/repo --no-banner --redact
+# Gitleaks scans committed git history. Current filesystem secrets are also covered by Trivy below.
+# --redact prevents leaked values from being printed into evidence files.
+Invoke-Scan -Name "Backend Gitleaks git-history scan" -FileName "01-backend-gitleaks.txt" -Action {
+  docker run --rm -v "${BackendPath}:/repo" ghcr.io/gitleaks/gitleaks:v8.30.0 git /repo --no-banner --redact
 }
-Invoke-Scan -Name "Frontend Gitleaks secret scan" -FileName "02-frontend-gitleaks.txt" -Action {
-  docker run --rm -v "${FrontendPath}:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 detect --source=/repo --no-banner --redact
+Invoke-Scan -Name "Frontend Gitleaks git-history scan" -FileName "02-frontend-gitleaks.txt" -Action {
+  docker run --rm -v "${FrontendPath}:/repo" ghcr.io/gitleaks/gitleaks:v8.30.0 git /repo --no-banner --redact
 }
 
 # Semgrep CE SAST. --error makes findings produce a non-zero exit code so evidence is marked REVIEW instead of false PASS.
