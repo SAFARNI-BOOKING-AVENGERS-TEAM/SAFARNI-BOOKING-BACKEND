@@ -16,6 +16,7 @@ import bookingRouter from "../modules/booking/booking.controller";
 import carRouter from "../modules/car/car.controller";
 import flightRouter from "../modules/flight/flight.controller";
 import paymentRouter from "../modules/payment/payment.controller";
+import aiSearchRouter from "../modules/aiSearch/aiSearch.controller";
 
 const router = Router();
 
@@ -50,6 +51,7 @@ router.use("/admin", adminRouter);
 router.use("/provider", providerRouter);
 router.use("/esim", esimRouter);
 router.use("/payments", paymentRouter);
+router.use("/ai-search", aiSearchRouter);
 
 router.get("/", (_req, res) => {
   res.status(200).json({
@@ -67,6 +69,7 @@ router.get("/", (_req, res) => {
     actors: ["guest", "user", "provider", "admin"],
     mainFeatures: [
       "Search & Booking",
+      "AI-Assisted Live Flight Search",
       "Role-Based Access (User / Provider / Admin)",
       "Token-Based Email Verification",
       "Real-Time Notifications",
@@ -86,6 +89,7 @@ router.get("/", (_req, res) => {
       packages: "/packages",
       provider: "/provider",
       admin: "/admin",
+      aiSearch: "/ai-search",
     },
     documentation: { postman: "Coming Soon" },
     timestamp: new Date().toISOString(),
