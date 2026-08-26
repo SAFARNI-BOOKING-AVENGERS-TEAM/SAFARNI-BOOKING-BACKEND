@@ -318,7 +318,7 @@ export const verifyCheckoutSession = async (userId: string, sessionId: string) =
     throw new ForbiddenException("Checkout session does not belong to this user");
   }
 
-  let fulfillmentStatus = payment.status;
+  let fulfillmentStatus: string = payment.status;
   if (session.payment_status === "paid") {
     const finalized = await finalizeCheckoutSession(session, true);
     fulfillmentStatus = finalized?.fulfillmentStatus || "succeeded";
