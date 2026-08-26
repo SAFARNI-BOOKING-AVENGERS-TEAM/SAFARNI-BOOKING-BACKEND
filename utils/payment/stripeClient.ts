@@ -5,7 +5,10 @@ const secretKey = process.env.STRIPE_SECRET_KEY;
 let stripeClient: Stripe | null = null;
 
 if (secretKey) {
-  stripeClient = new Stripe(secretKey);
+  stripeClient = new Stripe(secretKey, {
+    timeout: 15000,
+    maxNetworkRetries: 1,
+  });
 } else {
   console.warn(
     "[stripe]: STRIPE_SECRET_KEY is not set — the API will start normally, but payment endpoints are disabled until Stripe is configured."
