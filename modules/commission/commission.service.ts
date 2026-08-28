@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import BookingModel, { IBooking } from "../../DB/models/booking.model";
 import CommissionModel, { CommissionStatus, ICommissionRecord } from "../../DB/models/commission.model";
+import PaymentModel from "../../DB/models/payment.model";
 import HotelModel from "../../DB/models/hotel.model";
 import RoomModel from "../../DB/models/room.model";
 import TourModel from "../../DB/models/tour.model";
@@ -86,7 +87,51 @@ export const ensureCommissionRecordForBooking = async (
   return record;
 };
 
+const backfillCommissionRecords = async () => {
+  const payments = await PaymentModel.find({
+    status: "succeeded",
+    esimOrderId: { $exists: false },
+    $or: [
+      { bookingId: { $exists: true } },
+      { packageBookingId: { $exists: true } },
+    ],
+  });
+
+  for (const payment of payments) {
+    const bookings = payment.bookingId
+      ? await BookingModel.find({ _id: payment.bookingId })
+      : await BookingModel.find({ packageBookingId: payment.packageBookingId });
+
+    for (const booking of bookings) {
+      const record = await ensureCommissionRecordForBooking(
+        booking,
+        payment._id.toString(),
+        payment.currency
+      );
+      if (!record) continue;
+
+      const existingRefund = payment.refunds.find(
+        (refund) => refund.bookingId === booking._id.toString()
+      );
+
+      if (existingRefund) {
+        if (record.status !== "reversed") {
+          await reverseCommissionForBooking(
+            booking._id.toString(),
+            existingRefund.stripeRefundId,
+            existingRefund.amount
+          );
+        }
+      } else if (booking.status === "cancelled" && record.status !== "reversed") {
+        await markCommissionReversalPending(booking._id.toString());
+      }
+    }
+  }
+};
+
 export const reconcileCommissionRecords = async (providerId?: string) => {
+  await backfillCommissionRecords();
+
   const filter: Record<string, unknown> = { status: "pending", bookingEndDate: { $lte: new Date() } };
   if (providerId) filter.providerId = providerId;
 
