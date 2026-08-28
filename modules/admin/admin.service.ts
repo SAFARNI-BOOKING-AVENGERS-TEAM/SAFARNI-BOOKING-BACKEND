@@ -212,19 +212,26 @@ export const updateAdminBookingStatus = async (id: string, status: string) => {
     throw new BadRequestException("Invalid booking status");
   }
 
-  const currentBooking = await BookingModel.findById(id).select("packageBookingId");
+  const currentBooking = await BookingModel.findById(id).select("status packageBookingId");
   if (!currentBooking) throw new NotFoundException("Booking not found");
 
-  if (status === "confirmed") {
-    const paid = await PaymentModel.exists({
-      status: "succeeded",
-      ...(currentBooking.packageBookingId
-        ? { packageBookingId: currentBooking.packageBookingId }
-        : { bookingId: id }),
-    });
-    if (!paid) {
-      throw new BadRequestException("A booking can only be confirmed after a succeeded payment");
-    }
+  if (currentBooking.status === "cancelled" && status !== "cancelled") {
+    throw new BadRequestException("A cancelled booking cannot be reopened");
+  }
+
+  const paid = await PaymentModel.exists({
+    status: "succeeded",
+    ...(currentBooking.packageBookingId
+      ? { packageBookingId: currentBooking.packageBookingId }
+      : { bookingId: id }),
+  });
+
+  if (status === "confirmed" && !paid) {
+    throw new BadRequestException("A booking can only be confirmed after a succeeded payment");
+  }
+
+  if (status === "pending" && paid) {
+    throw new BadRequestException("A paid booking cannot be moved back to pending");
   }
 
   if (status === "cancelled") {
