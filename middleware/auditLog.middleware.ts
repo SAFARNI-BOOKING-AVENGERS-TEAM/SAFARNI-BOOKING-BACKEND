@@ -17,7 +17,7 @@ export const auditLogMiddleware = (
     const user = req.credentials?.user;
 
     AuditLogModel.create({
-      userId: user?._id || null,
+      userId: user?._id,
       userEmail: user?.email || "anonymous",
       method: req.method,
       path: req.originalUrl,
