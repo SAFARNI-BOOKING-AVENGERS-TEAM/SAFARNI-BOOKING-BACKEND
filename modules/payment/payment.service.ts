@@ -1,14 +1,20 @@
 import type Stripe from "stripe";
 import { getStripeClient } from "../../utils/payment/stripeClient";
-import PaymentModel from "../../DB/models/payment.model";
+import PaymentModel, { IPayment } from "../../DB/models/payment.model";
 import BookingModel from "../../DB/models/booking.model";
 import ESIMOrderModel from "../../DB/models/esimOrder.model";
 import { NotFoundException, BadRequestException, ForbiddenException } from "../../utils/response/error.response";
 import { sendNotification } from "../../utils/notifications/sendNotification";
 import { withLock } from "../../utils/concurrency/lock";
 import { fulfillPaidESIMOrder } from "../esim/esim.service";
+import {
+  ensureCommissionRecordForBooking,
+  markCommissionReversalPending,
+  reverseCommissionForBooking,
+} from "../commission/commission.service";
 
 const toCents = (amount: number) => Math.round(amount * 100);
+const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
 
 type PaymentTargetInput = {
   bookingId?: string;
@@ -94,7 +100,7 @@ const ensurePayable = async (targetFilter: Record<string, string>) => {
   if (paid) throw new BadRequestException("This item has already been paid for");
 };
 
-const finalizePaymentRecord = async (payment: any, suppressFulfillmentError = false) => {
+const finalizePaymentRecord = async (payment: IPayment, suppressFulfillmentError = false) => {
   return await withLock(`payment-finalize:${payment._id.toString()}`, async () => {
     const freshPayment = await PaymentModel.findById(payment._id);
     if (!freshPayment) throw new NotFoundException("Payment record not found");
@@ -128,6 +134,12 @@ const finalizePaymentRecord = async (payment: any, suppressFulfillmentError = fa
         await booking.save();
         repairedBookingState = true;
       }
+
+      await ensureCommissionRecordForBooking(
+        booking,
+        freshPayment._id.toString(),
+        freshPayment.currency
+      );
     }
 
     if (!wasAlreadySucceeded && bookings.length > 0) {
@@ -415,28 +427,73 @@ export const markPaymentFailed = async (stripePaymentIntentId: string) => {
   return payment;
 };
 
-export const refundBookingPayment = async (bookingId: string, packageBookingId: string | undefined, amount: number) => {
-  const stripeClient = getStripeClient();
+export const refundBookingPayment = async (
+  bookingId: string,
+  packageBookingId: string | undefined,
+  amount: number
+) => {
   const payment = await PaymentModel.findOne({
     status: "succeeded",
     ...(packageBookingId ? { packageBookingId } : { bookingId }),
   });
 
+  // Unpaid cancellations have no Stripe refund and no commission to reverse.
   if (!payment?.stripePaymentIntentId || !payment.stripePaymentIntentId.startsWith("pi_")) return null;
-  const alreadyRefunded = payment.refunds.some((refund: any) => refund.bookingId === bookingId);
-  if (alreadyRefunded) return null;
 
+  const booking = await BookingModel.findById(bookingId);
+  const commissionRecord = booking
+    ? await ensureCommissionRecordForBooking(
+        booking,
+        payment._id.toString(),
+        payment.currency
+      )
+    : null;
+
+  if (commissionRecord) {
+    await markCommissionReversalPending(bookingId);
+  }
+
+  const existingRefund = payment.refunds.find((refund) => refund.bookingId === bookingId);
+  if (existingRefund) {
+    if (commissionRecord && commissionRecord.status !== "reversed") {
+      await reverseCommissionForBooking(
+        bookingId,
+        existingRefund.stripeRefundId,
+        existingRefund.amount
+      );
+    }
+    return null;
+  }
+
+  const stripeClient = getStripeClient();
   const refund = await stripeClient.refunds.create({
     payment_intent: payment.stripePaymentIntentId,
-    amount: Math.round(amount * 100),
+    amount: toCents(amount),
   });
+
+  const commissionReversalAmount = commissionRecord
+    ? roundMoney(commissionRecord.commissionAmount)
+    : 0;
+  const providerNetReversalAmount = commissionRecord
+    ? roundMoney(amount - commissionReversalAmount)
+    : 0;
 
   payment.refunds.push({
     bookingId,
-    amount,
+    amount: roundMoney(amount),
     stripeRefundId: refund.id,
+    ...(commissionRecord && {
+      commissionRatePercent: commissionRecord.commissionRatePercent,
+      commissionReversalAmount,
+      providerNetReversalAmount,
+    }),
     createdAt: new Date(),
   });
   await payment.save();
+
+  if (commissionRecord) {
+    await reverseCommissionForBooking(bookingId, refund.id, amount);
+  }
+
   return refund;
 };
