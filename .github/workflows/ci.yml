@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Build, Audit, and Docker
+    name: Lint, Build, Audit, and Docker
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -36,6 +36,9 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint TypeScript
+        run: npm run lint
 
       - name: TypeScript build
         run: npm run build
