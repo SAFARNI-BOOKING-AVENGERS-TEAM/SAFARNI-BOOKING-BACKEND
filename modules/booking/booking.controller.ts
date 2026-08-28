@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { authMiddleware } from "../../middleware/auth.middleware";
 import {
   adminMiddleware,
@@ -7,6 +7,8 @@ import {
 import { asyncHandler } from "../../utils/response/async.handler";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
 import { requireSucceededPaymentForConfirmation } from "../../middleware/paidBookingConfirmation.middleware";
+import { IRequest } from "../../types/request.types";
+import { UnAuthorizedException } from "../../utils/response/error.response";
 import {
   CreateBookingSchema,
   UpdateBookingStatusSchema,
@@ -21,6 +23,7 @@ import {
   getRevenueByCategory,
   getBookingsByStatus,
 } from "./booking.service";
+import { cancelBookingAsManager } from "./bookingCancellation.service";
 import { successResponse } from "../../utils/response/success.response";
 
 const bookingRouter = Router();
@@ -53,7 +56,29 @@ bookingRouter.patch(
   authorizeRoles("admin", "provider"),
   validateRequest(UpdateBookingStatusSchema),
   requireSucceededPaymentForConfirmation,
-  asyncHandler(updateBookingStatus)
+  asyncHandler(async (req: Request, res: Response) => {
+    if (req.body.status !== "cancelled") {
+      return updateBookingStatus(req, res);
+    }
+
+    const user = (req as IRequest).credentials?.user;
+    if (!user || (user.role !== "admin" && user.role !== "provider")) {
+      throw new UnAuthorizedException("Authentication credentials not found");
+    }
+
+    const actor = user.role === "provider"
+      ? { role: "provider" as const, _id: user._id.toString() }
+      : { role: "admin" as const, _id: user._id.toString() };
+
+    const result = await cancelBookingAsManager(String(req.params.bookingId), actor);
+    return successResponse({
+      res,
+      message: result.refundIssued
+        ? "Booking cancelled and payment refunded successfully"
+        : "Booking cancelled successfully; any applicable refund is being reconciled",
+      data: result.booking,
+    });
+  })
 );
 
 bookingRouter.get(
