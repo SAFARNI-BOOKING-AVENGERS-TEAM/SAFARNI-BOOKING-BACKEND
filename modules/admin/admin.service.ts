@@ -15,6 +15,7 @@ import {
   getRevenueByCategory,
   getBookingsByStatus,
 } from "../booking/booking.service";
+import { cancelBookingAsManager } from "../booking/bookingCancellation.service";
 import {
   getCommissionAuditRecords,
   getPlatformCommissionSummary,
@@ -211,11 +212,25 @@ export const updateAdminBookingStatus = async (id: string, status: string) => {
     throw new BadRequestException("Invalid booking status");
   }
 
+  const currentBooking = await BookingModel.findById(id).select("packageBookingId");
+  if (!currentBooking) throw new NotFoundException("Booking not found");
+
   if (status === "confirmed") {
-    const paid = await PaymentModel.exists({ bookingId: id, status: "succeeded" });
+    const paid = await PaymentModel.exists({
+      status: "succeeded",
+      ...(currentBooking.packageBookingId
+        ? { packageBookingId: currentBooking.packageBookingId }
+        : { bookingId: id }),
+    });
     if (!paid) {
       throw new BadRequestException("A booking can only be confirmed after a succeeded payment");
     }
+  }
+
+  if (status === "cancelled") {
+    const result = await cancelBookingAsManager(id, { role: "admin" });
+    await result.booking.populate("userId", "name email");
+    return result.booking.toObject();
   }
 
   const booking = await BookingModel.findByIdAndUpdate(id, { status }, { new: true, runValidators: true })
