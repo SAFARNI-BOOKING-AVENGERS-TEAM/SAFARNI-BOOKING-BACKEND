@@ -1,6 +1,14 @@
 import ResourceLockModel from "../../DB/models/resourceLock.model";
 import { BadRequestException } from "../response/error.response";
 
+const isDuplicateKeyError = (error: unknown): error is { code: number } => {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === 11000;
+};
+
 // Tries to acquire the lock a few times with a short delay before giving up —
 // handles the common case where the other request finishes in milliseconds.
 const acquireLock = async (key: string, ttlMs = 5000, retries = 3): Promise<void> => {
@@ -8,8 +16,8 @@ const acquireLock = async (key: string, ttlMs = 5000, retries = 3): Promise<void
     try {
       await ResourceLockModel.create({ key, expiresAt: new Date(Date.now() + ttlMs) });
       return; // lock acquired
-    } catch (err: any) {
-      if (err.code !== 11000) throw err; // not a duplicate-key error — something else broke
+    } catch (error: unknown) {
+      if (!isDuplicateKeyError(error)) throw error;
 
       if (attempt === retries) {
         throw new BadRequestException(
