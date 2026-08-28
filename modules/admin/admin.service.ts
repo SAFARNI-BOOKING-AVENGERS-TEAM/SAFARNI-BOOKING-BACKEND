@@ -15,6 +15,10 @@ import {
   getRevenueByCategory,
   getBookingsByStatus,
 } from "../booking/booking.service";
+import {
+  getCommissionAuditRecords,
+  getPlatformCommissionSummary,
+} from "../commission/commission.service";
 
 const SERVICE_MODELS = {
   hotels: HotelModel,
@@ -59,6 +63,7 @@ export const getAdminDashboardStats = async () => {
     totalConfirmedRevenue,
     esimOrdersCount,
     esimOrdersRevenue,
+    commission,
   ] = await Promise.all([
     UserModel.countDocuments({ role: "user" }),
     UserModel.countDocuments({ role: "provider" }),
@@ -81,6 +86,7 @@ export const getAdminDashboardStats = async () => {
       { $match: { status: "completed" } },
       { $group: { _id: null, total: { $sum: "$price" } } },
     ]),
+    getPlatformCommissionSummary(),
   ]);
 
   return {
@@ -101,6 +107,7 @@ export const getAdminDashboardStats = async () => {
     payments: {
       totalConfirmedRevenue: totalConfirmedRevenue[0]?.total || 0,
     },
+    commission,
   };
 };
 
@@ -240,4 +247,8 @@ export const getAdminAuditLogs = async (query: Record<string, unknown>) => {
   ]);
 
   return { items, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
+};
+
+export const getAdminCommissionRecords = async (query: Record<string, unknown>) => {
+  return getCommissionAuditRecords(query);
 };
