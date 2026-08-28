@@ -6,8 +6,9 @@ import TourModel from "../../DB/models/tour.model";
 import BookingModel from "../../DB/models/booking.model";
 import ESIMPlanModel from "../../DB/models/esimPlan.model";
 import ESIMOrderModel from "../../DB/models/esimOrder.model";
+import { getProviderCommissionSummary } from "../commission/commission.service";
 
-const countByStatus = (docs: any[]) => ({
+const countByStatus = (docs: { status?: string }[]) => ({
   total: docs.length,
   pending: docs.filter((doc) => doc.status === "pending").length,
   approved: docs.filter((doc) => doc.status === "approved").length,
@@ -32,7 +33,7 @@ export const getProviderDashboardStats = async (providerId: string) => {
   const tourIds = tours.map((tour) => tour._id.toString());
   const esimPlanIds = esimPlans.map((plan) => plan._id);
 
-  const [bookings, esimOrders] = await Promise.all([
+  const [bookings, esimOrders, commission] = await Promise.all([
     BookingModel.find({
       $or: [
         { category: "hotels", itemId: { $in: roomIds } },
@@ -42,14 +43,17 @@ export const getProviderDashboardStats = async (providerId: string) => {
       ],
     }),
     ESIMOrderModel.find({ planId: { $in: esimPlanIds } }),
+    getProviderCommissionSummary(providerId),
   ]);
 
+  // Operational paid travel revenue remains the gross value of confirmed
+  // bookings. Commission settlement below is recognized only after endDate.
   const travelRevenue = bookings
     .filter((booking) => booking.status === "confirmed")
     .reduce((sum, booking) => sum + booking.totalPrice, 0);
 
-  // Under the hardened eSIM flow an order reaches completed only after Stripe
-  // succeeds and provisioning completes, so completed-order revenue is paid revenue.
+  // eSIM is intentionally outside the documented 10% completed-booking
+  // commission rule. Completed provisioning remains provider revenue.
   const esimRevenue = esimOrders
     .filter((order) => order.status === "completed")
     .reduce((sum, order) => sum + order.price, 0);
@@ -82,6 +86,11 @@ export const getProviderDashboardStats = async (providerId: string) => {
       travel: travelRevenue,
       esim: esimRevenue,
       total: travelRevenue + esimRevenue,
+    },
+    earnings: {
+      ...commission,
+      esimGross: esimRevenue,
+      totalProviderEarnings: Math.round((commission.providerNet + esimRevenue) * 100) / 100,
     },
   };
 };
