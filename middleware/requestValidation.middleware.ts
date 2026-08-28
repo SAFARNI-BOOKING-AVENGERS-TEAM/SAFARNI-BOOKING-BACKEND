@@ -3,7 +3,7 @@ import { BadRequestException } from "../utils/response/error.response";
 import { z } from "zod";
 
 export const validateRequest = (schema: z.ZodType) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
     const result = await schema.safeParseAsync({
       body: req.body,
       query: req.query,
@@ -23,7 +23,7 @@ export const validateRequest = (schema: z.ZodType) => {
 
     const parsed = result.data as { body?: unknown; query?: unknown; params?: unknown };
     if (parsed.body !== undefined) req.body = parsed.body;
-    if (parsed.params !== undefined) req.params = parsed.params as any;
+    if (parsed.params !== undefined) req.params = parsed.params as Request["params"];
     if (parsed.query !== undefined) Object.assign(req.query, parsed.query as object);
 
     return next();
