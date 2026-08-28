@@ -1,14 +1,72 @@
 import { Router, Request, Response } from "express";
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { authorizeRoles } from "../../middleware/admin.middleware";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { successResponse } from "../../utils/response/success.response";
-import { CreatePaymentIntentSchema, ConfirmPaymentSchema } from "./types/zod.types";
-import { createPaymentIntent, confirmPayment } from "./payment.service";
+import { getStripeDiagnostics } from "../../utils/payment/stripeClient";
+import {
+  CreatePaymentIntentSchema,
+  CreateCheckoutSessionSchema,
+  ConfirmPaymentSchema,
+} from "./types/zod.types";
+import {
+  createPaymentIntent,
+  createCheckoutSession,
+  verifyCheckoutSession,
+  confirmPayment,
+} from "./payment.service";
 
 const paymentRouter = Router();
 
-// POST /payments/create-intent — start a payment for a booking
+paymentRouter.get(
+  "/status",
+  authMiddleware,
+  authorizeRoles("admin"),
+  asyncHandler(async (_req: Request, res: Response) => {
+    const diagnostics = await getStripeDiagnostics();
+    return successResponse({
+      res,
+      message: "Stripe diagnostics retrieved successfully",
+      data: diagnostics,
+    });
+  })
+);
+
+paymentRouter.post(
+  "/checkout-session",
+  authMiddleware,
+  validateRequest(CreateCheckoutSessionSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const result = await createCheckoutSession(userId, {
+      bookingId: req.body.bookingId,
+      packageBookingId: req.body.packageBookingId,
+      esimOrderId: req.body.esimOrderId,
+    });
+    return successResponse({
+      res,
+      statusCode: 201,
+      message: "Checkout session created successfully",
+      data: result,
+    });
+  })
+);
+
+paymentRouter.get(
+  "/checkout-session/:sessionId",
+  authMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).credentials.user._id;
+    const result = await verifyCheckoutSession(userId, String(req.params.sessionId));
+    return successResponse({
+      res,
+      message: "Checkout session verified successfully",
+      data: result,
+    });
+  })
+);
+
 paymentRouter.post(
   "/create-intent",
   authMiddleware,
@@ -18,6 +76,7 @@ paymentRouter.post(
     const result = await createPaymentIntent(userId, {
       bookingId: req.body.bookingId,
       packageBookingId: req.body.packageBookingId,
+      esimOrderId: req.body.esimOrderId,
     });
     return successResponse({
       res,
@@ -28,7 +87,6 @@ paymentRouter.post(
   })
 );
 
-// POST /payments/confirm — confirm a payment succeeded (verified against Stripe)
 paymentRouter.post(
   "/confirm",
   authMiddleware,

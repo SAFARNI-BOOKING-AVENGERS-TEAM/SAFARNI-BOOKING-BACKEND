@@ -4,32 +4,95 @@ import { authorizeRoles } from "../../middleware/admin.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { successResponse } from "../../utils/response/success.response";
 import * as usersService from "../users/users.service";
-import { getAdminDashboardStats } from "./admin.service";
+import {
+  getAdminAuditLogs,
+  getAdminBookings,
+  getAdminCommissionRecords,
+  getAdminDashboardStats,
+  getAdminServices,
+  getAdminUsers,
+  updateAdminBookingStatus,
+  updateAdminServiceStatus,
+} from "./admin.service";
 
 const adminRouter = Router();
+const adminOnly = [authMiddleware, authorizeRoles("admin")] as const;
 
-// Admin can change a user's role
-// PATCH /admin/users/:id/role
+adminRouter.get(
+  "/dashboard/stats",
+  ...adminOnly,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const stats = await getAdminDashboardStats();
+    return successResponse({ res, message: "Admin dashboard stats retrieved successfully", data: stats });
+  })
+);
+
+adminRouter.get(
+  "/users",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await getAdminUsers(req.query as Record<string, unknown>);
+    return successResponse({ res, message: "Users retrieved successfully", data });
+  })
+);
+
 adminRouter.patch(
   "/users/:id/role",
-  authMiddleware,
-  authorizeRoles("admin"),
+  ...adminOnly,
   asyncHandler(usersService.updateUserRole)
 );
 
-// Admin dashboard: unified stats (users, services, bookings, revenue)
-// GET /admin/dashboard/stats
 adminRouter.get(
-  "/dashboard/stats",
-  authMiddleware,
-  authorizeRoles("admin"),
+  "/services",
+  ...adminOnly,
   asyncHandler(async (req: Request, res: Response) => {
-    const stats = await getAdminDashboardStats();
-    return successResponse({
-      res,
-      message: "Admin dashboard stats retrieved successfully",
-      data: stats,
-    });
+    const data = await getAdminServices(req.query as Record<string, unknown>);
+    return successResponse({ res, message: "Services retrieved successfully", data });
+  })
+);
+
+adminRouter.patch(
+  "/services/:type/:id/status",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await updateAdminServiceStatus(String(req.params.type), String(req.params.id), String(req.body.status));
+    return successResponse({ res, message: `Service status updated to ${req.body.status}`, data });
+  })
+);
+
+adminRouter.get(
+  "/bookings",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await getAdminBookings(req.query as Record<string, unknown>);
+    return successResponse({ res, message: "Bookings retrieved successfully", data });
+  })
+);
+
+adminRouter.patch(
+  "/bookings/:id/status",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await updateAdminBookingStatus(String(req.params.id), String(req.body.status));
+    return successResponse({ res, message: `Booking status updated to ${req.body.status}`, data });
+  })
+);
+
+adminRouter.get(
+  "/commissions",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await getAdminCommissionRecords(req.query as Record<string, unknown>);
+    return successResponse({ res, message: "Commission audit records retrieved successfully", data });
+  })
+);
+
+adminRouter.get(
+  "/audit-logs",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await getAdminAuditLogs(req.query as Record<string, unknown>);
+    return successResponse({ res, message: "Audit logs retrieved successfully", data });
   })
 );
 

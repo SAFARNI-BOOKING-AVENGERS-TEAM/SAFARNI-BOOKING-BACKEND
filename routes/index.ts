@@ -1,8 +1,5 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { authMiddleware } from "../middleware/auth.middleware";
-import { adminMiddleware } from "../middleware/admin.middleware";
-import AuditLogModel from "../DB/models/auditLog.model";
 import esimRouter from "../modules/esim/esim.controller";
 
 // Routers
@@ -19,16 +16,17 @@ import bookingRouter from "../modules/booking/booking.controller";
 import carRouter from "../modules/car/car.controller";
 import flightRouter from "../modules/flight/flight.controller";
 import paymentRouter from "../modules/payment/payment.controller";
+import aiSearchRouter from "../modules/aiSearch/aiSearch.controller";
 
 const router = Router();
 
 // Rate limiter specific to authentication routes (brute-force protection)
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: process.env.NODE_ENV === "production" ? 10 : 100,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
+  handler: (_req, res) => {
     res.status(429).json({
       error_message: "Too many authentication attempts, please try again later.",
       name: "TooManyRequestsException",
@@ -53,13 +51,9 @@ router.use("/admin", adminRouter);
 router.use("/provider", providerRouter);
 router.use("/esim", esimRouter);
 router.use("/payments", paymentRouter);
+router.use("/ai-search", aiSearchRouter);
 
-router.get("/admin/audit-logs", authMiddleware, adminMiddleware, async (req, res) => {
-  const logs = await AuditLogModel.find().sort({ createdAt: -1 }).limit(50);
-  res.json({ success: true, data: logs });
-});
-
-router.get("/", (req, res) => {
+router.get("/", (_req, res) => {
   res.status(200).json({
     name: "Travel System Marketplace API",
     version: "1.0.0",
@@ -75,6 +69,7 @@ router.get("/", (req, res) => {
     actors: ["guest", "user", "provider", "admin"],
     mainFeatures: [
       "Search & Booking",
+      "AI-Assisted Live Flight Search",
       "Role-Based Access (User / Provider / Admin)",
       "Token-Based Email Verification",
       "Real-Time Notifications",
@@ -94,6 +89,7 @@ router.get("/", (req, res) => {
       packages: "/packages",
       provider: "/provider",
       admin: "/admin",
+      aiSearch: "/ai-search",
     },
     documentation: { postman: "Coming Soon" },
     timestamp: new Date().toISOString(),

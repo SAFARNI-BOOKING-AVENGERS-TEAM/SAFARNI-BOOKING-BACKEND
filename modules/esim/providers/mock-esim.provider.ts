@@ -5,7 +5,7 @@ import { IESIMProvider, IESIMProfile } from "./esim.provider.interface";
 // (but entirely fake) ICCID/activation codes — no real telecom network
 // is involved anywhere in this class.
 export class MockESIMProvider implements IESIMProvider {
-  async provisionESIM(planId: string): Promise<IESIMProfile> {
+  async provisionESIM(_planId: string): Promise<IESIMProfile> {
     // ICCIDs are typically 19-20 digits starting with 89 (telecom industry prefix)
     const iccid = "89" + crypto.randomBytes(9).toString("hex").slice(0, 18);
     const activationCode = `MOCK-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;

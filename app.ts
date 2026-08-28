@@ -11,17 +11,16 @@ import webhookRouter from "./modules/payment/payment.webhook";
 import { notFound } from "./middleware/notFound.middleware";
 import { auditLogMiddleware } from "./middleware/auditLog.middleware";
 import { globalErrorHandler } from "./utils/response/error.response";
+import { uploadsDir } from "./utils/uploads/uploadPath";
 
 const app = express();
 
-// Rate Limiters
-
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
+  handler: (_req, res) => {
     res.status(429).json({
       error_message: "Too many requests from this IP, please try again later.",
       name: "TooManyRequestsException",
@@ -30,48 +29,41 @@ const globalLimiter = rateLimit({
   },
 });
 
-// Stripe Webhook — MUST be registered before express.json(),
-// because Stripe needs the raw request body to verify the signature.
-app.use(
-  "/webhooks/stripe",
-  express.raw({ type: "application/json" })
-);
+// Stripe requires the unparsed body for signature verification.
+app.use("/webhooks/stripe", express.raw({ type: "application/json", limit: "1mb" }));
 app.use("/webhooks", webhookRouter);
 
-// Global Middlewares
-
+app.disable("x-powered-by");
 app.use(helmet());
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(express.static("public"));
+// When Cloudinary is not configured, Multer stores development uploads in
+// uploadsDir. Serve that exact same absolute directory at /uploads.
+app.use("/uploads", express.static(uploadsDir));
 app.use(globalLimiter);
 app.use(auditLogMiddleware);
 
-// Request Logging Middleware
-app.use((req, res, next) => {
-  console.log(`[${req.method}] ${req.url} - body:`, req.body);
-  res.on("finish", () => {
-    console.log(`[${req.method}] ${req.url} - status: ${res.statusCode}`);
+// Never log request bodies: they can contain passwords, payment metadata or PII.
+if (process.env.NODE_ENV !== "test") {
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on("finish", () => {
+      console.log(`[${req.method}] ${req.path} - ${res.statusCode} - ${Date.now() - startedAt}ms`);
+    });
+    next();
   });
-  next();
-});
-
-// API Routes
+}
 
 app.use(routes);
-
-// 404 Not Found
-
 app.use(notFound);
-
-// Global Error Handler
-
 app.use(globalErrorHandler);
 
 export default app;

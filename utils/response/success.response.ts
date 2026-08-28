@@ -1,11 +1,11 @@
-import { Response } from 'express';
+import { Response } from "express";
 
 interface SuccessResponseParams {
   res: Response;
   statusCode?: number;
   message?: string;
   info?: string | object;
-  data?: any;
+  data?: unknown;
   pagination?: {
     total: number;
     page: number;
@@ -14,7 +14,14 @@ interface SuccessResponseParams {
   };
 }
 
-export const successResponse = ({ res, statusCode = 200, message = 'Done', info, data, pagination }: SuccessResponseParams): Response => {
+export const successResponse = ({
+  res,
+  statusCode = 200,
+  message = "Done",
+  info,
+  data,
+  pagination,
+}: SuccessResponseParams): Response => {
   return res.status(statusCode).json({
     message,
     info,

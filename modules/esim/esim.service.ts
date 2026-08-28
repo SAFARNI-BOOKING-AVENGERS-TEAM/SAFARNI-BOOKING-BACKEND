@@ -1,78 +1,62 @@
 import ESIMPlanModel from "../../DB/models/esimPlan.model";
+import ESIMOrderModel from "../../DB/models/esimOrder.model";
+import PaymentModel from "../../DB/models/payment.model";
 import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
 } from "../../utils/response/error.response";
 import { sendNotification } from "../../utils/notifications/sendNotification";
-import ESIMOrderModel from "../../DB/models/esimOrder.model";
+import { withLock } from "../../utils/concurrency/lock";
 import { getESIMProvider } from "./providers/esim.provider.factory";
 
 export const createESIMPlan = async (payload: any, userId: string, userRole: string) => {
   const status = userRole === "admin" ? "approved" : "pending";
-
-  return await ESIMPlanModel.create({
-    ...payload,
-    createdBy: userId,
-    updatedBy: userId,
-    status,
-  });
+  return await ESIMPlanModel.create({ ...payload, createdBy: userId, updatedBy: userId, status });
 };
 
 export const getESIMPlans = async (queryParam: any = {}, userRole?: string, userId?: string) => {
-  const { country, region, page, limit } = queryParam;
+  const { country, region, page, limit, mine } = queryParam;
   const query: any = {};
 
   if (userRole === "admin") {
-    // sees everything
+    // Admin sees all plans.
   } else if (userRole === "provider" && userId) {
-    query.$or = [
-      { status: "approved" },
-      { createdBy: userId, status: { $in: ["pending", "rejected"] } },
-    ];
+    if (String(mine) === "true") {
+      query.createdBy = userId;
+    } else {
+      query.$or = [
+        { status: "approved" },
+        { createdBy: userId, status: { $in: ["pending", "rejected"] } },
+      ];
+    }
   } else {
     query.status = "approved";
   }
 
-  if (country) {
-    query.country = { $regex: country, $options: "i" };
-  }
-  if (region) {
-    query.region = { $regex: region, $options: "i" };
-  }
+  if (country) query.country = { $regex: country, $options: "i" };
+  if (region) query.region = { $regex: region, $options: "i" };
 
   const currentPage = Math.max(Number(page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const skip = (currentPage - 1) * pageSize;
 
   const [data, total] = await Promise.all([
-    ESIMPlanModel.find(query).sort({ price: 1 }).skip(skip).limit(pageSize),
+    ESIMPlanModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
     ESIMPlanModel.countDocuments(query),
   ]);
 
-  return {
-    data,
-    pagination: {
-      total,
-      page: currentPage,
-      pages: Math.ceil(total / pageSize),
-      limit: pageSize,
-    },
-  };
+  return { data, pagination: { total, page: currentPage, pages: Math.ceil(total / pageSize), limit: pageSize } };
 };
 
 export const getESIMPlanDetails = async (planId: string, userRole?: string, userId?: string) => {
   const plan = await ESIMPlanModel.findById(planId);
-  if (!plan) {
-    throw new NotFoundException("eSIM plan not found");
-  }
+  if (!plan) throw new NotFoundException("eSIM plan not found");
 
   if (plan.status !== "approved") {
     const isAdmin = userRole === "admin";
     const isOwner = userRole === "provider" && userId && plan.createdBy.toString() === userId.toString();
-    if (!isAdmin && !isOwner) {
-      throw new NotFoundException("eSIM plan not found");
-    }
+    if (!isAdmin && !isOwner) throw new NotFoundException("eSIM plan not found");
   }
 
   return plan;
@@ -80,15 +64,10 @@ export const getESIMPlanDetails = async (planId: string, userRole?: string, user
 
 export const updateESIMPlan = async (planId: string, payload: any, userId: string, userRole: string) => {
   const plan = await ESIMPlanModel.findById(planId);
-  if (!plan) {
-    throw new NotFoundException("eSIM plan not found");
-  }
-
+  if (!plan) throw new NotFoundException("eSIM plan not found");
   if (userRole !== "admin" && plan.createdBy.toString() !== userId.toString()) {
     throw new ForbiddenException("You can only update eSIM plans you own");
   }
-
-  // Providers can't self-approve by sneaking a status change into an update
   if (userRole !== "admin") {
     delete payload.status;
     delete payload.createdBy;
@@ -97,30 +76,23 @@ export const updateESIMPlan = async (planId: string, payload: any, userId: strin
 
   Object.assign(plan, payload);
   plan.updatedBy = userId as any;
+  if (userRole !== "admin") plan.status = "pending";
   await plan.save();
-
   return plan;
 };
 
 export const deleteESIMPlan = async (planId: string, userId: string, userRole: string) => {
   const plan = await ESIMPlanModel.findById(planId);
-  if (!plan) {
-    throw new NotFoundException("eSIM plan not found");
-  }
-
+  if (!plan) throw new NotFoundException("eSIM plan not found");
   if (userRole !== "admin" && plan.createdBy.toString() !== userId.toString()) {
     throw new ForbiddenException("You can only delete eSIM plans you own");
   }
 
-  const activeOrder = await ESIMOrderModel.findOne({
-    planId,
-    status: { $in: ["pending", "processing", "completed"] },
-  });
-
-  if (activeOrder) {
-    throw new BadRequestException(
-      "Cannot delete this eSIM plan because it has existing orders"
-    );
+  // Failed paid orders must remain retryable, so a plan with any non-cancelled
+  // order stays immutable/deletable only after its order history is resolved.
+  const existingOrder = await ESIMOrderModel.findOne({ planId, status: { $ne: "cancelled" } });
+  if (existingOrder) {
+    throw new BadRequestException("Cannot delete this eSIM plan because it has existing orders");
   }
 
   await ESIMPlanModel.findByIdAndDelete(planId);
@@ -133,9 +105,7 @@ export const updateESIMPlanStatus = async (
   adminId: string
 ) => {
   const plan = await ESIMPlanModel.findById(planId);
-  if (!plan) {
-    throw new NotFoundException("eSIM plan not found");
-  }
+  if (!plan) throw new NotFoundException("eSIM plan not found");
 
   plan.status = status;
   plan.updatedBy = adminId as any;
@@ -143,78 +113,120 @@ export const updateESIMPlanStatus = async (
 
   await sendNotification(plan.createdBy.toString(), {
     title: status === "approved" ? "eSIM Plan Approved" : "eSIM Plan Rejected",
-    message:
-      status === "approved"
-        ? `Your eSIM plan "${plan.name}" has been approved and is now live.`
-        : `Your eSIM plan "${plan.name}" was rejected. Please review and update it.`,
+    message: status === "approved"
+      ? `Your eSIM plan "${plan.name}" has been approved and is now live.`
+      : `Your eSIM plan "${plan.name}" was rejected. Please review and update it.`,
     type: status === "approved" ? "service_approved" : "service_rejected",
     relatedId: plan._id.toString(),
   });
 
   return plan;
 };
+
 export const purchaseESIM = async (userId: string, planId: string, packageBookingId?: string) => {
   const plan = await ESIMPlanModel.findById(planId);
-  if (!plan) {
-    throw new NotFoundException("eSIM plan not found");
-  }
+  if (!plan) throw new NotFoundException("eSIM plan not found");
   if (plan.status !== "approved") {
     throw new BadRequestException("This eSIM plan is not currently available for purchase");
   }
 
-  // Create the order first as "pending" — this is the record of intent,
-  // independent of whether provisioning actually succeeds.
   const order = await ESIMOrderModel.create({
     userId,
     planId,
+    planSnapshot: {
+      name: plan.name,
+      country: plan.country,
+      region: plan.region,
+      dataAmount: plan.dataAmount,
+      dataUnit: plan.dataUnit,
+      validityDays: plan.validityDays,
+    },
     status: "pending",
     price: plan.price,
     currency: plan.currency,
     ...(packageBookingId && { packageBookingId }),
   });
 
-  try {
-    order.status = "processing";
-    await order.save();
+  return { ...order.toObject(), paymentStatus: "unpaid" as const };
+};
 
-    const provider = getESIMProvider();
-    const profile = await provider.provisionESIM(planId);
+export const fulfillPaidESIMOrder = async (orderId: string) => {
+  return await withLock(`esim-fulfill:${orderId}`, async () => {
+    const order = await ESIMOrderModel.findById(orderId);
+    if (!order) throw new NotFoundException("eSIM order not found");
+    if (order.status === "completed" && order.profile) return order;
+    if (order.status === "cancelled") throw new BadRequestException("Cancelled eSIM orders cannot be provisioned");
 
-    const expiresAt = new Date(Date.now() + plan.validityDays * 24 * 60 * 60 * 1000);
+    const plan = await ESIMPlanModel.findById(order.planId);
+    if (!plan) throw new NotFoundException("eSIM plan not found");
 
-    order.profile = { ...profile, expiresAt };
-    order.status = "completed";
-    await order.save();
+    try {
+      order.status = "processing";
+      await order.save();
 
-    await sendNotification(userId, {
-      title: "eSIM Ready",
-      message: `Your eSIM for "${plan.name}" has been provisioned and is ready to activate.`,
-      type: "booking_status_changed",
-      relatedId: order._id.toString(),
-    });
-  } catch (err) {
-    order.status = "failed";
-    await order.save();
-    throw new BadRequestException("Failed to provision your eSIM. Please try again.");
+      const provider = getESIMProvider();
+      const profile = await provider.provisionESIM(plan._id.toString());
+      const validityDays = order.planSnapshot?.validityDays || plan.validityDays;
+      const expiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
+
+      order.profile = { ...profile, expiresAt };
+      order.status = "completed";
+      await order.save();
+
+      await sendNotification(order.userId.toString(), {
+        title: "eSIM Ready",
+        message: `Your eSIM for "${order.planSnapshot?.name || plan.name}" has been paid, provisioned, and is ready to activate.`,
+        type: "booking_status_changed",
+        relatedId: order._id.toString(),
+      });
+
+      return order;
+    } catch (error) {
+      order.status = "failed";
+      await order.save();
+      console.error(`[esim] Provisioning failed for paid order ${orderId}:`, error);
+      throw new BadRequestException("Payment succeeded, but eSIM provisioning failed. Please retry provisioning.");
+    }
+  });
+};
+
+const latestPaymentStatusByOrder = async (userId: string, orderIds: string[]) => {
+  if (!orderIds.length) return new Map<string, string>();
+
+  const payments = await PaymentModel.find({
+    userId,
+    esimOrderId: { $in: orderIds },
+  })
+    .sort({ createdAt: -1 })
+    .select("esimOrderId status")
+    .lean();
+
+  const statusMap = new Map<string, string>();
+  for (const payment of payments) {
+    if (payment.esimOrderId && !statusMap.has(payment.esimOrderId)) {
+      statusMap.set(payment.esimOrderId, payment.status);
+    }
   }
-
-  return order;
+  return statusMap;
 };
 
 export const getMyESIMOrders = async (userId: string) => {
-  return await ESIMOrderModel.find({ userId }).sort({ createdAt: -1 }).populate("planId");
+  const orders = await ESIMOrderModel.find({ userId }).sort({ createdAt: -1 }).populate("planId");
+  const statusMap = await latestPaymentStatusByOrder(userId, orders.map((order) => order._id.toString()));
+
+  return orders.map((order) => ({
+    ...order.toObject(),
+    paymentStatus: statusMap.get(order._id.toString()) || "unpaid",
+  }));
 };
 
 export const getESIMOrderDetails = async (orderId: string, userId: string) => {
   const order = await ESIMOrderModel.findById(orderId).populate("planId");
-  if (!order) {
-    throw new NotFoundException("eSIM order not found");
-  }
+  if (!order) throw new NotFoundException("eSIM order not found");
   if (order.userId.toString() !== userId.toString()) {
     throw new ForbiddenException("You are not authorized to view this order");
   }
 
-  // Lazily flip an expired-but-not-yet-marked profile when someone checks it
   if (
     order.profile &&
     order.profile.status === "ready" &&
@@ -225,14 +237,17 @@ export const getESIMOrderDetails = async (orderId: string, userId: string) => {
     await order.save();
   }
 
-  return order;
+  const payment = await PaymentModel.findOne({ userId, esimOrderId: orderId })
+    .sort({ createdAt: -1 })
+    .select("status")
+    .lean();
+
+  return { ...order.toObject(), paymentStatus: payment?.status || "unpaid" };
 };
 
 export const activateESIM = async (orderId: string, userId: string) => {
   const order = await ESIMOrderModel.findById(orderId);
-  if (!order) {
-    throw new NotFoundException("eSIM order not found");
-  }
+  if (!order) throw new NotFoundException("eSIM order not found");
   if (order.userId.toString() !== userId.toString()) {
     throw new ForbiddenException("You are not authorized to activate this eSIM");
   }
@@ -247,9 +262,9 @@ export const activateESIM = async (orderId: string, userId: string) => {
     await order.save();
     throw new BadRequestException("This eSIM has expired and can no longer be activated");
   }
+
   const provider = getESIMProvider();
   const activatedProfile = await provider.activateESIM(order.profile.iccid);
-
   order.profile.status = activatedProfile.status;
   await order.save();
 

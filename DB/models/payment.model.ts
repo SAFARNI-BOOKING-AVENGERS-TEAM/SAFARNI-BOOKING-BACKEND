@@ -4,6 +4,9 @@ export interface IPaymentRefund {
   bookingId: string;
   amount: number;
   stripeRefundId: string;
+  commissionRatePercent?: number;
+  commissionReversalAmount?: number;
+  providerNetReversalAmount?: number;
   createdAt: Date;
 }
 
@@ -11,9 +14,11 @@ export interface IPayment extends Document {
   userId: Types.ObjectId;
   bookingId?: string;
   packageBookingId?: string;
+  esimOrderId?: string;
   amount: number;
   currency: string;
   stripePaymentIntentId: string;
+  stripeCheckoutSessionId?: string;
   status: "pending" | "succeeded" | "failed";
   refunds: IPaymentRefund[];
 }
@@ -23,9 +28,14 @@ const paymentSchema = new Schema<IPayment>(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     bookingId: { type: String },
     packageBookingId: { type: String },
+    esimOrderId: { type: String },
     amount: { type: Number, required: true },
     currency: { type: String, required: true, default: "usd" },
+    // Keep the original required+unique index shape for compatibility with
+    // existing local databases. Hosted Checkout uses a unique checkout:<cs_...>
+    // placeholder until Stripe exposes the real pi_... identifier.
     stripePaymentIntentId: { type: String, required: true, unique: true },
+    stripeCheckoutSessionId: { type: String },
     status: {
       type: String,
       enum: ["pending", "succeeded", "failed"],
@@ -36,6 +46,9 @@ const paymentSchema = new Schema<IPayment>(
         bookingId: { type: String, required: true },
         amount: { type: Number, required: true },
         stripeRefundId: { type: String, required: true },
+        commissionRatePercent: { type: Number },
+        commissionReversalAmount: { type: Number },
+        providerNetReversalAmount: { type: Number },
         createdAt: { type: Date, default: Date.now },
       },
     ],
@@ -44,5 +57,9 @@ const paymentSchema = new Schema<IPayment>(
 );
 
 paymentSchema.index({ userId: 1 });
+paymentSchema.index({ stripeCheckoutSessionId: 1 }, { unique: true, sparse: true });
+paymentSchema.index({ bookingId: 1, status: 1 });
+paymentSchema.index({ packageBookingId: 1, status: 1 });
+paymentSchema.index({ esimOrderId: 1, status: 1 });
 
 export default model<IPayment>("Payment", paymentSchema);

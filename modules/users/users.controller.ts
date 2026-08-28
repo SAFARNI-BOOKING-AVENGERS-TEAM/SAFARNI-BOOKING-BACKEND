@@ -1,5 +1,4 @@
 import { authMiddleware } from "../../middleware/auth.middleware";
-import { authorizeRoles } from "../../middleware/admin.middleware";
 import { Router } from "express";
 import * as usersService from "./users.service";
 import { upload } from "../../middleware/upload";

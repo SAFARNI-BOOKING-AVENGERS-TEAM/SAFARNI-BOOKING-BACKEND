@@ -1,11 +1,19 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || '');
+    const mongoUri = process.env.MONGO_URI?.trim();
+    if (!mongoUri) {
+      throw new Error("MONGO_URI is required");
+    }
+
+    const conn = await mongoose.connect(mongoUri);
     console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error: any) {
-    console.error(`Error: ${error.message}`);
+  } catch (error: unknown) {
+    console.error(`Error: ${getErrorMessage(error)}`);
     process.exit(1);
   }
 };

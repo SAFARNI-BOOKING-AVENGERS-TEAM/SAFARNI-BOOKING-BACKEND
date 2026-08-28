@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.middleware";
-import { adminMiddleware } from "../../middleware/admin.middleware";
 import { authorizeRoles } from "../../middleware/admin.middleware";
 import { asyncHandler } from "../../utils/response/async.handler";
 import { validateRequest } from "../../middleware/requestValidation.middleware";

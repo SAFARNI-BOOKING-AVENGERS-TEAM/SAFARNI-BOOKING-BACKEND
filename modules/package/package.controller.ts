@@ -5,9 +5,8 @@ import { optionalAuthMiddleware } from "../../middleware/optionalAuth.middleware
 import { asyncHandler } from "../../utils/response/async.handler";
 import { successResponse } from "../../utils/response/success.response";
 import { validateRequest } from "../../middleware/requestValidation.middleware";
-import { UpdateFeaturedSchema } from "./types/zod.types";
+import { UpdateFeaturedSchema, CreatePackageSchema, BookPackageSchema } from "./types/zod.types";
 import { BadRequestException } from "../../utils/response/error.response";
-import { CreatePackageSchema, BookPackageSchema } from "./types/zod.types";
 import { requireProviderType } from "../../middleware/providerType.middleware";
 import {
   createPackage,
@@ -20,7 +19,6 @@ import {
 
 const packageRouter = Router();
 
-// GET /packages — browse packages (guest sees approved only)
 packageRouter.get(
   "/",
   optionalAuthMiddleware,
@@ -31,16 +29,14 @@ packageRouter.get(
   })
 );
 
-// GET /packages/:id — full details with resolved item info
 packageRouter.get(
   "/:id",
   asyncHandler(async (req: Request, res: Response) => {
-    const data = await getPackageDetails(req.params.id);
+    const data = await getPackageDetails(String(req.params.id));
     return successResponse({ res, message: "Package details retrieved successfully", data });
   })
 );
 
-// POST /packages — Admin or Provider (own services only) creates a package
 packageRouter.post(
   "/",
   authMiddleware,
@@ -54,7 +50,6 @@ packageRouter.post(
   })
 );
 
-// PATCH /packages/:id/status — Admin approves/rejects
 packageRouter.patch(
   "/:id/status",
   authMiddleware,
@@ -65,28 +60,22 @@ packageRouter.patch(
       throw new BadRequestException("Status must be approved or rejected");
     }
     const adminId = (req as any).credentials.user._id;
-    const pkg = await updatePackageStatus(req.params.id, status, adminId);
+    const pkg = await updatePackageStatus(String(req.params.id), status, adminId);
     return successResponse({ res, message: `Package ${status} successfully`, data: pkg });
   })
 );
 
-// POST /packages/:id/book — any authenticated user books the package
 packageRouter.post(
   "/:id/book",
   authMiddleware,
   validateRequest(BookPackageSchema),
   asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as any).credentials.user._id;
-    const result = await bookPackage(req.params.id, userId, req.body.items);
-    return successResponse({
-      res,
-      statusCode: 201,
-      message: "Package booked successfully",
-      data: result,
-    });
+    const result = await bookPackage(String(req.params.id), userId, req.body.items);
+    return successResponse({ res, statusCode: 201, message: "Package booked successfully", data: result });
   })
 );
-// PATCH /packages/:id/featured — Admin updates featured status
+
 packageRouter.patch(
   "/:id/featured",
   authMiddleware,
@@ -94,7 +83,7 @@ packageRouter.patch(
   validateRequest(UpdateFeaturedSchema),
   asyncHandler(async (req: Request, res: Response) => {
     const adminId = (req as any).credentials.user._id;
-    const pkg = await updatePackageFeatured(req.params.id, req.body.featured, adminId);
+    const pkg = await updatePackageFeatured(String(req.params.id), req.body.featured, adminId);
     return successResponse({ res, message: "Package featured status updated successfully", data: pkg });
   })
 );

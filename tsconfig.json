@@ -17,10 +17,7 @@
     "."
   ],
   "exclude": [
-    "node_modules"
-  ],
-  "scripts": {
-  "build": "tsc",
-  "start": "node dist/index.js"
-}
+    "node_modules",
+    "scripts"
+  ]
 }

@@ -1,4 +1,4 @@
-import { EmailOptions, EmailTemplate } from "./email.types";
+import { EmailTemplate } from "./email.types";
 
 export const getResetPasswordTemplate = (url: string): EmailTemplate => ({
   subject: "Password Reset Request",

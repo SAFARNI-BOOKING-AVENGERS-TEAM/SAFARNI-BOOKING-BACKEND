@@ -1,46 +1,34 @@
-import { superRefine, z } from "zod";
+import { z } from "zod";
 
-export const UserSchema = z.object({
-  name: z.string().min(2, "Name too short"),
+const nameSchema = z.string().trim().min(2, "Name too short").max(100, "Name too long");
+const emailSchema = z.string().trim().email("Please provide a valid email address").transform((value) => value.toLowerCase());
+const passwordSchema = z
+  .string({ message: "Password is required" })
+  .min(8, "Password must be at least 8 characters")
+  .max(128, "Password is too long")
+  .regex(/[a-z]/, "Password must contain a lowercase letter")
+  .regex(/[A-Z]/, "Password must contain an uppercase letter")
+  .regex(/[0-9]/, "Password must contain a number");
+const providerTypeSchema = z.enum(["travel", "telecom", "both"]);
 
-  email: z
-    .string({ message: "Email is required" })
-    .email("Please provide a valid email address"),
-
-  password: z
-    .string({ message: "Password is required" })
-    .min(8, "Password must be at least 8 characters"),
-  role: z.enum(["user", "service_provider", "admin"]
-  ),
-  service: z.enum(["flights", "cars", "hotels"]).optional(),
-  
-
-  isVerified: z.boolean().default(false)
-}).superRefine((data, ctx) => {
-  if (data.role === "service_provider" && !data.service) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Service is required for service providers",
-    });
-  }
+export const signupSchema = z.object({
+  body: z.strictObject({
+    name: nameSchema,
+    email: emailSchema,
+    password: passwordSchema,
+  }),
 });
 
 export const resetPasswordRequestSchema = z.object({
-  body: z.object({
-    email: UserSchema.shape.email,
-  }),
+  body: z.strictObject({ email: emailSchema }),
 });
 
 export const resetPasswordConfirmSchema = z.object({
-  params: z.object({
-    token: z.string().min(10, "Invalid or expired token"),
-  }),
+  params: z.object({ token: z.string().min(32, "Invalid or expired token") }),
   body: z
-    .object({
-      password: UserSchema.shape.password,
-      confirmPassword: z
-        .string({ message: "Confirm password is required" })
-        .min(1, "Please confirm your password"),
+    .strictObject({
+      password: passwordSchema,
+      confirmPassword: z.string().min(1, "Please confirm your password"),
     })
     .refine((data) => data.password === data.confirmPassword, {
       message: "Passwords do not match",
@@ -49,52 +37,38 @@ export const resetPasswordConfirmSchema = z.object({
 });
 
 export const LoginSchema = z.object({
-  body: z.strictObject({
-    email: UserSchema.shape.email,
-    password: UserSchema.shape.password,
-  }),
+  body: z.strictObject({ email: emailSchema, password: z.string().min(1) }),
 });
 
 export const verifyEmailSchema = z.object({
-  body: z.strictObject({
-    email: UserSchema.shape.email,
-  }),
+  params: z.object({ token: z.string().min(32, "Invalid or expired token") }),
 });
-// Additional schemas for service provider management
-// Add Service Provider Schema
+
 export const addServiceProviderSchema = z.object({
   body: z.strictObject({
-    name: UserSchema.shape.name,
-    email: UserSchema.shape.email,
-    password: UserSchema.shape.password,
-    service: UserSchema.shape.service,
+    name: nameSchema,
+    email: emailSchema,
+    password: passwordSchema,
+    providerType: providerTypeSchema,
   }),
 });
-// Update Service Provider Schema
+
 export const updateServiceProviderSchema = z.object({
-  params: z.object({
-    id: z.string()
-  }),
+  params: z.object({ id: z.string().min(1) }),
   body: z.strictObject({
-    name: UserSchema.shape.name,
-    email: UserSchema.shape.email,
-    service: UserSchema.shape.service,
+    name: nameSchema,
+    email: emailSchema,
+    providerType: providerTypeSchema,
   }),
 });
-// Patch Update Service Provider Schema
+
 export const patchUpdateServiceProviderSchema = z.object({
-  params: z.object({
-    id: z.string()
-  }),
-  body: z.strictObject({
-    name: UserSchema.shape.name.optional(),
-    email: UserSchema.shape.email.optional(),
-    service: UserSchema.shape.service.optional(),
-  }),
-});
-//get service provider by service schema
-export const getServiceProviderByServiceSchema = z.object({
-  query: z.object({
-    service: UserSchema.shape.service,
-  }),
+  params: z.object({ id: z.string().min(1) }),
+  body: z
+    .strictObject({
+      name: nameSchema.optional(),
+      email: emailSchema.optional(),
+      providerType: providerTypeSchema.optional(),
+    })
+    .refine((body) => Object.keys(body).length > 0, "At least one field is required"),
 });
