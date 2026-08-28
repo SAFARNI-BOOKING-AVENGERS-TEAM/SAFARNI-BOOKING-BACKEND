@@ -3,7 +3,7 @@ import { verifyToken, TokenType } from "../utils/security/token.security";
 
 export const optionalAuthMiddleware = async (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) => {
   const token = req.cookies?.access_token;
@@ -15,7 +15,7 @@ export const optionalAuthMiddleware = async (
   try {
     const { user } = await verifyToken(token, TokenType.access);
     (req as any).credentials = { user };
-  } catch (err) {
+  } catch (_err) {
     // Invalid/expired token: just treat as a guest, don't block the request
   }
 
