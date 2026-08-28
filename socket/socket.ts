@@ -35,7 +35,7 @@ export const initSocket = (httpServer: HttpServer) => {
       const { user } = await verifyToken(token, TokenType.access);
       (socket as any).userId = user._id.toString();
       next();
-    } catch (err) {
+    } catch (_err) {
       next(new Error("Invalid or expired token"));
     }
   });
