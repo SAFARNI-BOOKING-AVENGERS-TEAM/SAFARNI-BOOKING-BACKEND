@@ -1,10 +1,11 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import AuditLogModel from "../DB/models/auditLog.model";
+import { IRequest } from "../types/request.types";
 
 const AUDITED_METHODS = ["POST", "PATCH", "DELETE", "PUT"];
 
 export const auditLogMiddleware = (
-  req: Request,
+  req: IRequest,
   res: Response,
   next: NextFunction
 ) => {
@@ -13,7 +14,7 @@ export const auditLogMiddleware = (
   }
 
   res.on("finish", () => {
-    const user = (req as any).credentials?.user;
+    const user = req.credentials?.user;
 
     AuditLogModel.create({
       userId: user?._id || null,
@@ -22,7 +23,7 @@ export const auditLogMiddleware = (
       path: req.originalUrl,
       statusCode: res.statusCode,
       success: res.statusCode < 400,
-    }).catch((err) => {
+    }).catch((err: Error) => {
       console.error("Failed to write audit log:", err.message);
     });
   });
