@@ -4,6 +4,9 @@ export interface IPaymentRefund {
   bookingId: string;
   amount: number;
   stripeRefundId: string;
+  commissionRatePercent?: number;
+  commissionReversalAmount?: number;
+  providerNetReversalAmount?: number;
   createdAt: Date;
 }
 
@@ -43,6 +46,9 @@ const paymentSchema = new Schema<IPayment>(
         bookingId: { type: String, required: true },
         amount: { type: Number, required: true },
         stripeRefundId: { type: String, required: true },
+        commissionRatePercent: { type: Number },
+        commissionReversalAmount: { type: Number },
+        providerNetReversalAmount: { type: Number },
         createdAt: { type: Date, default: Date.now },
       },
     ],
