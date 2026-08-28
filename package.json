@@ -14,13 +14,10 @@
     "test:api": "npx newman run tours_api_tests.postman_collection.json"
   },
   "dependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/nodemailer": "^7.0.4",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "crypto": "^1.0.1",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.0",
@@ -42,7 +39,8 @@
     "@types/helmet": "^0.0.48",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
-    "@types/node": "^25.0.3",
+    "@types/node": "^24.13.3",
+    "@types/nodemailer": "^7.0.12",
     "@typescript-eslint/eslint-plugin": "^8.51.0",
     "@typescript-eslint/parser": "^8.51.0",
     "eslint": "^9.39.2",
