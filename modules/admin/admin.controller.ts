@@ -7,6 +7,7 @@ import * as usersService from "../users/users.service";
 import {
   getAdminAuditLogs,
   getAdminBookings,
+  getAdminCommissionRecords,
   getAdminDashboardStats,
   getAdminServices,
   getAdminUsers,
@@ -74,6 +75,15 @@ adminRouter.patch(
   asyncHandler(async (req: Request, res: Response) => {
     const data = await updateAdminBookingStatus(String(req.params.id), String(req.body.status));
     return successResponse({ res, message: `Booking status updated to ${req.body.status}`, data });
+  })
+);
+
+adminRouter.get(
+  "/commissions",
+  ...adminOnly,
+  asyncHandler(async (req: Request, res: Response) => {
+    const data = await getAdminCommissionRecords(req.query as Record<string, unknown>);
+    return successResponse({ res, message: "Commission audit records retrieved successfully", data });
   })
 );
 
