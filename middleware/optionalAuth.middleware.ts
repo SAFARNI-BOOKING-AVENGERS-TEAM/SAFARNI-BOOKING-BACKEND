@@ -1,8 +1,9 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
+import { IRequest } from "../types/request.types";
 import { verifyToken, TokenType } from "../utils/security/token.security";
 
 export const optionalAuthMiddleware = async (
-  req: Request,
+  req: IRequest,
   _res: Response,
   next: NextFunction
 ) => {
@@ -13,8 +14,7 @@ export const optionalAuthMiddleware = async (
   }
 
   try {
-    const { user } = await verifyToken(token, TokenType.access);
-    (req as any).credentials = { user };
+    req.credentials = await verifyToken(token, TokenType.access);
   } catch (_err) {
     // Invalid/expired token: just treat as a guest, don't block the request
   }
