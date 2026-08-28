@@ -18,7 +18,7 @@ class CloudinaryMulterStorage implements multer.StorageEngine {
   _handleFile(
     _req: Request,
     file: Express.Multer.File,
-    cb: (error?: any, info?: Partial<Express.Multer.File>) => void
+    cb: (error?: unknown, info?: Partial<Express.Multer.File>) => void
   ) {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
@@ -31,7 +31,7 @@ class CloudinaryMulterStorage implements multer.StorageEngine {
           return cb(error || new Error("Cloudinary upload failed"));
         }
 
-        cb(null, {
+        cb(undefined, {
           path: result.secure_url,
           filename: result.public_id,
           size: result.bytes,
